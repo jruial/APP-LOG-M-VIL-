@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta name="color-scheme" content="light" />
-<title>V2.3 · Planificador de cargas 2.3 | Logística móvil</title>
+<title>V2.6 · Planificador de cargas 2.6 | Logística móvil</title>
 <meta name="theme-color" content="#183149" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="default" />
@@ -110,6 +110,35 @@ body.viewer-open{overflow:hidden}
 }
 @media(max-width:360px){.formgrid{grid-template-columns:1fr}.formgrid .field{grid-column:1/-1}.scene3d canvas{height:345px}}
 @media print{.mobile-jumps,.mobile-data-menu,.scene-expand{display:none!important}.scene3d.is-expanded{position:relative!important;inset:auto!important;z-index:auto}.scene3d.is-expanded canvas{height:310px!important}}
+.metric26{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr));gap:8px;margin:12px 0}
+.metric26 span{border:1px solid var(--line);border-radius:8px;padding:8px;font-size:12px;overflow-wrap:anywhere}
+.metric26 b{display:block;font-size:14px}
+.table26{width:100%;border-collapse:collapse;font-size:13px}
+.table26 th,.table26 td{text-align:left;vertical-align:top;padding:7px;border-bottom:1px solid var(--line);overflow-wrap:anywhere}
+.table26 th{background:#eef3f6}
+.pending26,.scene-legend26,.form26,.mode26{margin:12px 0}
+.scene-legend26{border-left:3px solid #d89234;padding:8px 10px;background:#fff7eb;font-size:13px}
+.scene-legend26 ol{margin:6px 0;padding-left:24px}
+.form26{display:grid;gap:10px}
+.mode26{display:flex;gap:8px;flex-wrap:wrap}
+.mode26 button[aria-pressed="true"]{background:#17374b;color:white}
+.list26{display:grid;gap:10px;margin:12px 0}
+.card26{padding:12px;border:1px solid var(--line);border-radius:9px;overflow-wrap:anywhere}
+.card26 .tools{margin-top:8px;flex-wrap:wrap}
+.field26{margin-top:10px}
+.scene-controls{flex-wrap:wrap}
+@media(max-width:850px){
+ .table26,.table26 tbody{display:block}
+ .table26 thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+ .table26 tr{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:3px 8px;border:1px solid var(--line);padding:8px;border-radius:8px;margin-bottom:8px}
+ .table26 td{padding:3px;border:0;min-width:0}
+ .table26 td:before{content:attr(data-label);display:block;color:var(--muted);font-size:11px}
+ .table26 td:first-child,.pending-table td:last-child{grid-column:1/-1}
+}
+#convoy-results{margin-bottom:16px}
+#convoy-results button{max-width:100%;overflow-wrap:anywhere}
+#scene-vehicle{margin-bottom:12px}
+@media print{#convoy-results{box-shadow:none;border:1px solid #bbb}}
 </style>
 </head>
 <body>
@@ -118,6 +147,7 @@ body.viewer-open{overflow:hidden}
 <script>
 (()=>{'use strict';
 const STORAGE='planificador_cargas_local_v1';
+const EPS=1e-6;
 const PALETTE=['#3a8d98','#c1803f','#7488b6','#868a53','#a474a7','#438c69','#b87775','#537f9d','#ac9859','#6d91a7'];
 const $=(s)=>document.querySelector(s);const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const n=v=>Number(v);const dec=(v,k=1)=>Number(v||0).toLocaleString('es-ES',{minimumFractionDigits:k,maximumFractionDigits:k});
@@ -125,10 +155,100 @@ const int=v=>Math.round(Number(v||0)).toLocaleString('es-ES');
 const uid=()=>('id'+Math.random().toString(36).slice(2,11));
 const vol=(l,w,h)=>l*w*h/1e6;const area=(l,w)=>l*w/1e4;
 function demo(){const v1='v-demo-1',v2='v-demo-2',m1='m-demo-1',m2='m-demo-2',m3='m-demo-3';return {vehicles:[{id:v1,name:'EJEMPLO · Caja de camión',l:420,w:210,h:210,payload:1200,doorW:200,doorH:190},{id:v2,name:'EJEMPLO · Furgón',l:300,w:170,h:175,payload:900,doorW:160,doorH:165}],materials:[{id:m1,name:'EJEMPLO · Caja mediana',l:80,w:60,h:60,kg:45,levels:2,rotate:true},{id:m2,name:'EJEMPLO · Baúl rígido',l:120,w:60,h:55,kg:55,levels:1,rotate:true},{id:m3,name:'EJEMPLO · Caja pequeña',l:40,w:30,h:30,kg:10,levels:3,rotate:true}],plan:[{id:m1,qty:5},{id:m2,qty:2},{id:m3,qty:8}],selectedVehicleId:v1,reservePct:15};}
-function normalize(obj){if(!obj||!Array.isArray(obj.vehicles)||!Array.isArray(obj.materials)||!Array.isArray(obj.plan))throw Error('El archivo no contiene un plan válido.'); const val=(x)=>Number.isFinite(Number(x))?Number(x):0;const vehicles=obj.vehicles.map(v=>({id:String(v.id||uid()),name:String(v.name||'Vehículo'),l:val(v.l),w:val(v.w),h:val(v.h),payload:val(v.payload),doorW:val(v.doorW),doorH:val(v.doorH)})).filter(v=>v.l>0&&v.w>0&&v.h>0&&v.payload>0);const materials=obj.materials.map(m=>({id:String(m.id||uid()),name:String(m.name||'Material'),l:val(m.l),w:val(m.w),h:val(m.h),kg:val(m.kg),stackable:m.stackable!==false,mixedAbove:m.mixedAbove===true,maxTopKg:m.maxTopKg===null||m.maxTopKg===undefined||m.maxTopKg===''?null:(Number.isFinite(Number(m.maxTopKg))&&Number(m.maxTopKg)>=0?Number(m.maxTopKg):0),levels:Math.min(30,Math.max(1,Math.floor(val(m.levels)||1))),rotate:m.rotate!==false})).filter(m=>m.l>0&&m.w>0&&m.h>0&&m.kg>=0);const plan=obj.plan.filter(p=>materials.some(m=>m.id===p.id)).map(p=>({id:String(p.id),qty:Math.min(1000,Math.max(1,Math.floor(val(p.qty)||1)))}));return {vehicles,materials,plan,selectedVehicleId:vehicles.some(v=>v.id===obj.selectedVehicleId)?obj.selectedVehicleId:(vehicles[0]?.id||''),reservePct:Math.min(35,Math.max(0,val(obj.reservePct??15)))};}
-let data;try{const saved=localStorage.getItem(STORAGE);data=saved?normalize(JSON.parse(saved)):demo();}catch(e){data=demo();}
-let tab='plan',editV=null,editM=null,notification='';let lastCalc=null;const view3d={az:0.65,el:0.55,zoom:1.0,cut:null,vehicleId:null,focus:'',selected:null,hit:[],scene:null};function save(){try{localStorage.setItem(STORAGE,JSON.stringify(data));}catch(e){notification='El navegador no permite guardar automáticamente. Usa «Exportar datos».';}}
-function vehicle(){return data.vehicles.find(x=>x.id===data.selectedVehicleId)||null;}
+// Public coordinates: X length, Y width, Z height. The original renderer
+// and packing engine use x for width and y for length internally.
+function defaultConfig(){return {id:'default',name:'Estándar',obstacles:[]};}
+
+function normalizeConfigs(v){
+ const configurations=Array.isArray(v.configurations)&&v.configurations.length?v.configurations:[defaultConfig()];
+ const configIds=new Set();
+ v.configurations=configurations.map(c=>{
+  if(!c||typeof c!=='object')throw Error('Configuración interior inválida.');
+  const id=String(c.id||uid()),name=String(c.name||'Configuración').trim();
+  if(!name||configIds.has(id))throw Error('Nombre o identificador de configuración inválido.');
+  configIds.add(id);
+  const seen=new Set();
+  const obstacles=(Array.isArray(c.obstacles)?c.obstacles:[]).map(o=>{
+   if(!o||typeof o!=='object')throw Error('Obstáculo inválido.');
+   const item={id:String(o.id||uid()),name:String(o.name||'').trim(),active:o.active!==false};
+   for(const k of ['X','Y','Z','l','w','h']){
+    if(o[k]==null||o[k]===''||!Number.isFinite(Number(o[k])))throw Error('Introduce coordenadas y dimensiones numéricas.');
+    item[k]=Number(o[k]);
+   }
+   if(!item.name||seen.has(item.id)||item.l<=0||item.w<=0||item.h<=0||item.X<0||item.Y<0||item.Z<0||
+      item.X+item.l>v.l+1e-6||item.Y+item.w>v.w+1e-6||item.Z+item.h>v.h+1e-6)
+    throw Error('El obstáculo «'+(item.name||'sin nombre')+'» debe quedar completamente dentro del vehículo.');
+   seen.add(item.id);return item;
+  });
+  const active=obstacles.filter(o=>o.active).map(projectObstacle);
+  if(active.some((o,i)=>active.slice(0,i).some(p=>intersects3(o,p))))
+   throw Error('Hay obstáculos activos solapados en «'+name+'».');
+  return {id,name,obstacles};
+ });
+ v.configId=v.configurations.some(c=>c.id===v.configId)?v.configId:v.configurations[0].id;
+ return v;
+}
+
+function projectObstacle(o){return {...o,x:o.Y,y:o.X,z:o.Z};}
+
+function configuredVehicle(v,id=v.configId){
+ const configs=v.configurations||[defaultConfig()];
+ const c=configs.find(x=>x.id===id)||configs[0];
+ return {...v,configId:c.id,configurationName:c.name,obstacles:c.obstacles.filter(o=>o.active).map(projectObstacle)};
+}
+
+function operatingSpace(v,reserve){
+ const usableL=v.l*(1-reserve/100),V=vol(v.l,v.w,v.h);
+ let Vu=vol(usableL,v.w,v.h),floor=area(usableL,v.w);
+ for(const o of v.obstacles||[]){
+  const overlap=Math.max(0,Math.min(usableL,o.y+o.l)-o.y);
+  Vu-=vol(overlap,o.w,o.h);
+  if(o.z<=EPS)floor-=area(overlap,o.w);
+ }
+ return {usableL,V,Vu:Math.max(0,Vu),floor:Math.max(0,floor)};
+}
+
+function geometryFailure(m,v,reserve){
+ const {usableL,Vu}=operatingSpace(v,reserve);
+ if(m.h>v.h+EPS)return 'Altura superior a la interior.';
+ if(!orientations(m).some(o=>o.w<=v.w+EPS&&o.l<=usableL+EPS))return 'Base incompatible con las dimensiones y la reserva.';
+ if(m.kg>v.payload+EPS)return 'Masa unitaria superior a la carga útil.';
+ if(vol(m.l,m.w,m.h)>Vu+1e-9)return 'Volumen unitario superior al volumen operativo.';
+ return '';
+}
+
+function passesDoor(m,v){
+ return !(v.doorW>0&&v.doorH>0)||m.h<=v.doorH+EPS&&orientations(m).some(o=>o.w<=v.doorW+EPS);
+}
+
+function pendingReason(m,vehicles,reserve){
+ if(!vehicles.length)return 'Selecciona vehículos para calcular.';
+ const failures=vehicles.map(v=>geometryFailure(m,v,reserve));
+ if(failures.every(Boolean))return 'Incompatibilidad individual: '+[...new Set(failures)].join(' ');
+ const candidates=vehicles.filter((_,i)=>!failures[i]);
+ if(candidates.every(v=>!passesDoor(m,v)))return 'Abertura declarada insuficiente en los vehículos compatibles. Revisa la maniobra.';
+ return 'La búsqueda no ha encontrado posición con las restricciones aplicadas.';
+}
+
+function searchExpired(budget){
+ if(budget.left<=0)return true;
+ if(budget.deadline&&performance.now()>=budget.deadline){budget.left=0;return true;}
+ return false;
+}
+
+function mergeManifest(plan){
+ const quantities=new Map();
+ for(const p of plan)quantities.set(p.id,(quantities.get(p.id)||0)+p.qty);
+ return [...quantities].map(([id,qty])=>{
+  if(qty>1000)throw Error('El manifiesto supera 1000 unidades de un mismo material.');
+  return {id,qty};
+ });
+}
+
+function normalize(obj){if(!obj||!Array.isArray(obj.vehicles)||!Array.isArray(obj.materials)||!Array.isArray(obj.plan))throw Error('El archivo no contiene un plan válido.'); const val=(x)=>Number.isFinite(Number(x))?Number(x):0;const vehicles=obj.vehicles.map(v=>({id:String(v.id||uid()),name:String(v.name||'Vehículo'),l:val(v.l),w:val(v.w),h:val(v.h),payload:val(v.payload),doorW:val(v.doorW),doorH:val(v.doorH),configId:String(v.configId??''),configurations:v.configurations})).filter(v=>v.l>0&&v.w>0&&v.h>0&&v.payload>0);for(const v of vehicles)normalizeConfigs(v);const materials=obj.materials.map(m=>({id:String(m.id||uid()),name:String(m.name||'Material'),l:val(m.l),w:val(m.w),h:val(m.h),kg:val(m.kg),stackable:m.stackable!==false,mixedAbove:m.mixedAbove!==false,maxTopKg:m.maxTopKg===null||m.maxTopKg===undefined||m.maxTopKg===''?null:(Number.isFinite(Number(m.maxTopKg))&&Number(m.maxTopKg)>=0?Number(m.maxTopKg):0),levels:Math.min(30,Math.max(1,Math.floor(val(m.levels)||2))),rotate:m.rotate!==false})).filter(m=>m.l>0&&m.w>0&&m.h>0&&m.kg>=0);const importedPlan=obj.plan.filter(p=>materials.some(m=>m.id===p.id)).map(p=>({id:String(p.id),qty:Math.min(1000,Math.max(1,Math.floor(val(p.qty)||1)))}));const plan=mergeManifest(importedPlan);return {...normalizeConvoy(obj,vehicles,materials,plan),vehicles,materials,plan,selectedVehicleId:vehicles.some(v=>v.id===obj.selectedVehicleId)?obj.selectedVehicleId:(vehicles[0]?.id||''),reservePct:Math.min(35,Math.max(0,val(obj.reservePct??15)))};}
+let data,startupError='';try{const saved=localStorage.getItem(STORAGE);data=normalize(saved?JSON.parse(saved):demo());}catch(e){data=normalize(demo());startupError='No se pudieron recuperar los datos guardados. Importa una copia JSON.';}
+let tab='plan',editV=null,editM=null,notification=startupError;let lastCalc=null;const view3d={az:0.65,el:0.55,zoom:1.0,cut:null,vehicleId:null,focus:'',selected:null,hit:[],scene:null};function save(){cleanFleetLocks();try{localStorage.setItem(STORAGE,JSON.stringify(data));}catch(e){notification='El navegador no permite guardar automáticamente. Usa «Exportar datos».';}}
+function vehicle(){const v=data.vehicles.find(x=>x.id===data.selectedVehicleId);return v?configuredVehicle(v):null;}
 function material(id){return data.materials.find(x=>x.id===id)||null;}
 function dimensions(v){return `${int(v.l)} × ${int(v.w)} × ${int(v.h)} cm`;}
 function download(name,blob){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000)}
@@ -136,44 +256,45 @@ function orientations(c){return c.rotate&&c.l!==c.w?[{w:c.w,l:c.l,rotated:false}
 function rectsIntersect(a,b){return !(b.x>=a.x+a.w-0.001||b.x+b.w<=a.x+0.001||b.y>=a.y+a.l-0.001||b.y+b.l<=a.y+0.001)}
 function cutRect(f,r){if(!rectsIntersect(f,r))return [f];const o=[];if(r.x>f.x+.001)o.push({x:f.x,y:f.y,w:r.x-f.x,l:f.l});if(r.x+r.w<f.x+f.w-.001)o.push({x:r.x+r.w,y:f.y,w:f.x+f.w-r.x-r.w,l:f.l});if(r.y>f.y+.001)o.push({x:f.x,y:f.y,w:f.w,l:r.y-f.y});if(r.y+r.l<f.y+f.l-.001)o.push({x:f.x,y:r.y+r.l,w:f.w,l:f.y+f.l-r.y-r.l});return o.filter(z=>z.w>.001&&z.l>.001)}
 function prune(rects){return rects.filter((a,i)=>!rects.some((b,j)=>i!==j&&a.x>=b.x-.001&&a.y>=b.y-.001&&a.x+a.w<=b.x+b.w+.001&&a.y+a.l<=b.y+b.l+.001&&((b.w*b.l>a.w*a.l+.001)||((Math.abs(b.w*b.l-a.w*a.l)<.001)&&j<i))))}
-// V2.3: independent boxes, support tree, free rectangles on every support.
+// V2.6: independent boxes, support tree, free rectangles on every support.
 // X=width, Y=length, Z=height, cm. maxTopKg excludes the support's own mass.
-const EPS=1e-6;
+
 function intersects3(a,b){return a.x<b.x+b.w-EPS&&b.x<a.x+a.w-EPS&&a.y<b.y+b.l-EPS&&b.y<a.y+a.l-EPS&&a.z<b.z+b.h-EPS&&b.z<a.z+a.h-EPS;}
 function containsBase(a,b){return b.x>=a.x-EPS&&b.y>=a.y-EPS&&b.x+b.w<=a.x+a.w+EPS&&b.y+b.l<=a.y+a.l+EPS;}
 function lexLess(a,b){for(let i=0;i<a.length;i++){if(a[i]<b[i]-EPS)return true;if(a[i]>b[i]+EPS)return false;}return false;}
-function canReceive(p,m){return p.stackable!==false&&p.levels>1&&(p.id===m.id||p.mixedAbove===true);}
+function canReceive(p,m){return p.stackable!==false&&p.levels>1&&(p.id===m.id||p.mixedAbove!==false);}
 function ancestors(placed,index){const a=[];while(index!==null){a.push(index);index=placed[index].parent;}return a;}
 function pack3D(units,v,L,mode,budget){
- const placed=[],pending=[...units];
+ const placed=[],pending=[...units],obstacles=v.obstacles||[];let placedKg=0;
  const orders=[(a,b)=>b.w*b.l-a.w*a.l||b.kg-a.kg,(a,b)=>Math.max(b.w,b.l)-Math.max(a.w,a.l)||b.w*b.l-a.w*a.l,(a,b)=>b.kg-a.kg||b.w*b.l-a.w*a.l,(a,b)=>b.w*b.l*b.h-a.w*a.l*a.h];
- pending.sort(orders[Math.floor(mode/3)]);
+ const order=orders[Math.floor(mode/3)];pending.sort((a,b)=>(b.priority||0)-(a.priority||0)||order(a,b));
  let remaining=pending,progress=true;
  while(remaining.length&&progress&&budget.left>0){progress=false;const failed=[];
  for(const m of remaining){let best=null;
  // Null is the vehicle floor. Other surfaces are the exact top of one box.
  for(let si=-1;si<placed.length&&budget.left>0;si++){
+  if(placedKg+m.kg>v.payload+EPS||searchExpired(budget))break;
   const support=si<0?null:placed[si],z=support?support.z+support.h:0;
   if(z+m.h>v.h+EPS||(support&&!canReceive(support,m)))continue;
   const chain=support?ancestors(placed,si):[];
   if(chain.some((idx,depth)=>depth+2>placed[idx].levels||(placed[idx].maxTopKg!=null&&placed[idx].topKg+m.kg>placed[idx].maxTopKg+EPS)))continue;
   const surface=support?{x:support.x,y:support.y,w:support.w,l:support.l}:{x:0,y:0,w:v.w,l:L};
   let free=[surface];
-  for(const p of placed){if(p.z<z+m.h-EPS&&p.z+p.h>z+EPS){free=prune(free.flatMap(f=>cutRect(f,p)));}if(!free.length)break;}
+  for(const p of [...obstacles,...placed]){if(searchExpired(budget)){free=[];break;}if(p.z<z+m.h-EPS&&p.z+p.h>z+EPS){free=prune(free.flatMap(f=>cutRect(f,p)));}if(!free.length)break;}
   for(const o of orientations(m))for(const f of free){
    if(o.w>f.w+EPS||o.l>f.l+EPS)continue;
    // Try all rectangle corners to allow edge alignment and spare usable space.
    for(const [x,y] of [[f.x,f.y],[f.x+f.w-o.w,f.y],[f.x,f.y+f.l-o.l],[f.x+f.w-o.w,f.y+f.l-o.l]]){
-    if(--budget.left<=0)break;
+    if(--budget.left<=0||searchExpired(budget))break;
     const p={...m,x,y,z,w:o.w,l:o.l,rotated:o.rotated,parent:si<0?null:si,level:support?support.level+1:1,topKg:0,units:1};
-    if(!containsBase(surface,p)||placed.some(q=>intersects3(p,q)))continue;
+    if(!containsBase(surface,p)||placed.some(q=>intersects3(p,q))||obstacles.some(q=>intersects3(p,q)))continue;
     const waste=f.w*f.l-o.w*o.l;
     const score=mode%3===0?[z,y,x,waste]:mode%3===1?[support?0:1,z,waste,y,x]:[z,waste,y,x];
     if(!best||lexLess(score,best.score))best={p,score,chain};
    }
   }
  }
- if(best){for(const idx of best.chain)placed[idx].topKg+=m.kg;placed.push(best.p);progress=true;}else failed.push(m);
+ if(best){for(const idx of best.chain)placed[idx].topKg+=m.kg;placed.push(best.p);placedKg+=m.kg;progress=true;}else failed.push(m);
  }
  remaining=failed;
  }
@@ -182,10 +303,12 @@ function pack3D(units,v,L,mode,budget){
 // Independent post-validation: recompute loads and ancestry, never trust heuristic counters.
 function validatePlacement(placed,v,L){
  const errors=[],loads=placed.map(()=>0);
+ if(placed.reduce((a,p)=>a+p.kg,0)>v.payload+EPS)errors.push('Carga útil excedida');
  for(let i=0;i<placed.length;i++){
   const p=placed[i];
   if(![p.x,p.y,p.z,p.w,p.l,p.h,p.kg].every(Number.isFinite)||p.w<=0||p.l<=0||p.h<=0||p.kg<0){errors.push('Dimensiones o masa inválidas');continue;}
   if(p.x<-EPS||p.y<-EPS||p.z<-EPS||p.x+p.w>v.w+EPS||p.y+p.l>L+EPS||p.z+p.h>v.h+EPS)errors.push('Fuera del vehículo: '+p.key);
+  if((v.obstacles||[]).some(q=>intersects3(p,q)))errors.push('Intersección con obstáculo: '+p.key);
   for(let j=0;j<i;j++)if(intersects3(p,placed[j]))errors.push('Intersección: '+p.key+' / '+placed[j].key);
   if(p.parent===null){if(Math.abs(p.z)>EPS)errors.push('Sin apoyo: '+p.key);}
   else{
@@ -199,12 +322,76 @@ function validatePlacement(placed,v,L){
  placed.forEach((p,i)=>{if(p.maxTopKg!=null&&loads[i]>p.maxTopKg+EPS)errors.push('Masa soportada excedida: '+p.key);if(Math.abs(loads[i]-p.topKg)>EPS)errors.push('Masa acumulada inconsistente: '+p.key);});
  return errors;
 }
+function ratio(value,capacity){return capacity>0?value/capacity:0;}
+
+function loadTotals(details,placed,reason=()=> 'La búsqueda no ha encontrado una posición.'){
+ const counts=new Map();
+ for(const box of placed)counts.set(box.id,(counts.get(box.id)||0)+1);
+ const pending=details.map(m=>{
+  const loaded=counts.get(m.id)||0;
+  const qty=m.qty-loaded;
+  return {...m,requested:m.qty,loaded,qty,pendingKg:qty*m.kg,pendingVol:qty*vol(m.l,m.w,m.h),reason:qty?reason(m):''};
+ }).filter(m=>m.qty>0);
+ return {
+  pending,pendingCount:pending.reduce((sum,m)=>sum+m.qty,0),
+  placedKg:placed.reduce((sum,p)=>sum+p.kg,0),
+  placedVol:placed.reduce((sum,p)=>sum+vol(p.l,p.w,p.h),0),
+  pendingKg:pending.reduce((sum,m)=>sum+m.pendingKg,0),
+  pendingVol:pending.reduce((sum,m)=>sum+m.pendingVol,0)
+ };
+}
+
+function loadMetrics(c){
+ return `<div class="metric26"><span><b>${int(c.pieces)}</b> solicitados</span><span><b>${int(c.loaded)} · ${dec(ratio(c.loaded,c.pieces)*100,1)} %</b> colocados</span><span><b>${int(c.pendingCount)}</b> pendientes</span><span><b>${dec(c.placedVol,3)} / ${dec(c.totalVol,3)} m³</b> colocados / solicitados</span><span><b>${dec(c.placedKg,1)} kg</b> colocados</span><span><b>${dec(c.pendingKg,1)} kg · ${dec(c.pendingVol,3)} m³</b> pendientes</span></div>`;
+}
+
+function responsiveTable(headers,rows,kind=''){
+ return `<table class="table26 ${kind}"><thead><tr>${headers.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.map(row=>`<tr>${row.map((cell,i)=>`<td data-label="${esc(headers[i])}">${cell}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+}
+
+function pendingHtml(pending){
+ if(!pending?.length)return '';
+ const headings=['Material','Solicitados','Colocados','Pendientes','Peso pendiente','Volumen pendiente','Motivo'];
+ return `<div class="pending26"><h3>Material pendiente</h3>${responsiveTable(headings,pending.map(m=>[
+  esc(m.name),int(m.requested),int(m.loaded),`<b>${int(m.qty)}</b>`,dec(m.pendingKg,1)+' kg',dec(m.pendingVol,3)+' m³',esc(m.reason)
+ ]),'pending-table')}</div>`;
+}
+
+function pendingLegend(pending){
+ if(!pending?.length)return '';
+ const total=pending.reduce((sum,m)=>sum+m.qty,0);
+ return `<div class="scene-legend26"><b>Fuera del vehículo · ${int(total)} bultos pendientes</b><p class="help">Cada bulto se representa con sus medidas reales, a la misma escala que el vehículo.</p><ol>${pending.map(m=>`<li>${esc(m.name)} × <b>${int(m.qty)}</b> · ${dimensions(m)}</li>`).join('')}</ol></div>`;
+}
+
+function pendingTray(c){
+ const groups=c.scenePending??c.pending??[];
+ if(!groups.length)return null;
+ const gap=10,x=c.v.w+gap*3;
+ const totalArea=groups.reduce((sum,m)=>sum+(m.w+gap)*(m.l+gap)*m.qty,0);
+ const targetWidth=Math.max(c.v.w,Math.sqrt(totalArea));
+ const items=[];
+ let cursorX=x,cursorY=gap,rowLength=0,right=x,height=c.v.h;
+ for(const [group,m] of groups.entries()){
+  for(let unit=1;unit<=m.qty;unit++){
+   if(cursorX>x&&cursorX+m.w>x+targetWidth){
+    cursorX=x;cursorY+=rowLength+gap;rowLength=0;
+   }
+   items.push({...m,x:cursorX,y:cursorY,z:0,pending:true,color:'#d89234',
+    number:group+1,unit,column:'pending:'+m.id+':'+unit});
+   right=Math.max(right,cursorX+m.w+gap);
+   height=Math.max(height,m.h);
+   cursorX+=m.w+gap;rowLength=Math.max(rowLength,m.l);
+  }
+ }
+ return {x,right,length:Math.max(c.v.l,cursorY+rowLength+gap),height,items};
+}
+
 let calcCache=null;
 function calculate(){
  const cacheKey=JSON.stringify(data);if(calcCache?.key===cacheKey)return calcCache.result;
  const v=vehicle();if(!v)return {state:'neutral',headline:'Selecciona o crea un vehículo.',notes:['Introduce las dimensiones interiores reales de la caja de carga.']};
  if(!data.plan.length)return {state:'neutral',headline:'Añade materiales para comenzar.',v,notes:['Usa el catálogo de materiales o modifica los ejemplos.']};
- const usableL=v.l*(1-data.reservePct/100),V=vol(v.l,v.w,v.h),Vu=vol(usableL,v.w,v.h),floor=area(usableL,v.w);
+ const {usableL,V,Vu,floor}=operatingSpace(v,data.reservePct);
  let totalVol=0,totalKg=0,pieces=0,units=[],issues=[],doorNotes=[],details=[],byColor={};
  for(const p of data.plan){const m=material(p.id);if(!m)continue;const qty=p.qty;pieces+=qty;totalVol+=vol(m.l,m.w,m.h)*qty;totalKg+=m.kg*qty;
   if(m.h>v.h+EPS)issues.push(m.name+': altura superior a la interior.');
@@ -232,23 +419,25 @@ function calculate(){
  if(doorNotes.length){notes.push(...doorNotes);if(state==='green'){state='amber';headline='Encaje interior encontrado; acceso pendiente de revisión';}}
  if(state==='green')notes.push(`Los ${pieces} bultos tienen posiciones individuales X/Y/Z verificadas, sin solapamiento, con apoyo completo en un único soporte y límites de niveles respetados.`);
  if(details.some(m=>m.maxTopKg==null))notes.push('Hay materiales sin masa máxima soportada declarada: su resistencia no está verificada.');
+ if(v.obstacles.length)notes.push(`Configuración «${v.configurationName}»: ${v.obstacles.length} obstáculos activos. El espacio operativo descuenta su parte dentro de la franja utilizable.`);
  notes.push('Niveles: cada soporte limita la profundidad de su rama, contando su propia base. El permiso de mezcla se aplica al contacto directo; la masa total se transmite a todos los soportes inferiores.');
  notes.push('Propuesta geométrica, NO certificación de estiba segura. Comprobar reparto por ejes, amarres, estabilidad, resistencia real, suelo y secuencia de carga/descarga.');
  if(validation.length)notes.push('Distribución retirada por fallo de validación interna: '+validation.join('; '));
  const result={state,headline,notes,v,usableL,V,Vu,floor,totalVol,totalKg,pieces,columns:best.placed,placed:best.placed,failed:best.failed,loaded,placedArea,minArea,details,byColor,overKg,overV,overArea:false,validation};
- calcCache={key:cacheKey,result};return result;
+ Object.assign(result,loadTotals(details,result.placed,m=>pendingReason(m,[v],data.reservePct)));calcCache={key:cacheKey,result};return result;
 }
-function summary(c){if(!c.v)return '';return `<div class="status ${c.state}"><span>${c.state==='green'?'✓':c.state==='red'?'✕':c.state==='amber'?'!':'•'}</span><div>${esc(c.headline)}<div style="font-size:12px;font-weight:500;margin-top:3px">${c.state==='green'?'Solo viabilidad geométrica y de masa total. No implica autorización para circular.':c.state==='amber'?'Resultado no concluyente sobre capacidad real.':''}</div></div></div><div class="statgrid"><div class="stat"><div class="num">${dec(c.totalVol,2)} m³</div><div class="label">Volumen de carga</div></div><div class="stat"><div class="num">${dec(c.totalVol/c.Vu*100,1)} %</div><div class="label">Ocupación de volumen operativo</div></div><div class="stat"><div class="num">${dec(c.totalKg,0)} kg</div><div class="label">Masa de carga / ${int(c.v.payload)} kg máx.</div></div><div class="stat"><div class="num">${dec(c.minArea,2)} m²</div><div class="label">Suelo ocupado en propuesta</div></div><div class="stat"><div class="num">${dec(c.floor,2)} m²</div><div class="label">Suelo operativo</div></div><div class="stat"><div class="num">${int(c.loaded)} / ${int(c.pieces)}</div><div class="label">Bultos posicionados</div></div></div><div class="help">Ocupación del volumen total de la caja: <b>${dec(c.totalVol/c.V*100,1)} %</b> · reserva aplicada: <b>${dec(data.reservePct,0)} % de longitud</b> · volumen operativo: <b>${dec(c.Vu,2)} m³</b>.</div><ul class="notes">${c.notes.map(x=>`<li>• ${esc(x)}</li>`).join('')}</ul>`}
+function summary(c){if(!c.v)return '';return `<div class="status ${c.state}"><span>${c.state==='green'?'✓':c.state==='red'?'✕':c.state==='amber'?'!':'•'}</span><div>${esc(c.headline)}<div style="font-size:12px;font-weight:500;margin-top:3px">${c.state==='green'?'Solo viabilidad geométrica y de masa total. No implica autorización para circular.':c.state==='amber'?'Resultado no concluyente sobre capacidad real.':''}</div></div></div><div class="statgrid"><div class="stat"><div class="num">${dec(c.totalVol,2)} m³</div><div class="label">Volumen de carga</div></div><div class="stat"><div class="num">${dec(ratio(c.placedVol,c.Vu)*100,1)} %</div><div class="label">Volumen operativo ocupado</div></div><div class="stat"><div class="num">${dec(c.totalKg,0)} kg</div><div class="label">Masa de carga / ${int(c.v.payload)} kg máx.</div></div><div class="stat"><div class="num">${dec(c.minArea,2)} m²</div><div class="label">Suelo ocupado en propuesta</div></div><div class="stat"><div class="num">${dec(c.floor,2)} m²</div><div class="label">Suelo operativo</div></div><div class="stat"><div class="num">${int(c.loaded)} / ${int(c.pieces)}</div><div class="label">Bultos posicionados</div></div></div><div class="help">Ocupación del volumen total de la caja: <b>${dec(ratio(c.placedVol,c.V)*100,1)} %</b> · reserva aplicada: <b>${dec(data.reservePct,0)} % de longitud</b> · volumen operativo: <b>${dec(c.Vu,2)} m³</b>.</div><ul class="notes">${c.notes.map(x=>`<li>• ${esc(x)}</li>`).join('')}</ul>${loadMetrics(c)}`}
 function planSvg(c){if(!c.v)return '<div class="empty">Selecciona un vehículo.</div>';if(!c.placed)return '<div class="empty">Añade materiales para generar una distribución.</div>';let W=c.v.w,L=c.v.l;const px=30,sw=600,sh=Math.max(260,Math.min(690,sw*(L/W))),rw=sw-2*px,rh=sh-2*px;const X=x=>px+x/W*rw,Y=y=>px+y/L*rh,WW=w=>w/W*rw,HH=l=>l/L*rh;const pieces=[];
 pieces.push(`<svg role="img" aria-label="Plano de ocupación de la caja de carga, vista superior" viewBox="0 0 ${sw} ${sh}"><rect x="${px}" y="${px}" width="${rw}" height="${rh}" fill="white" stroke="#6c879a" stroke-width="2"/>`);
-if(data.reservePct>0)pieces.push(`<rect x="${px}" y="${Y(c.usableL)}" width="${rw}" height="${HH(L-c.usableL)}" fill="#e7ebed" stroke="#9aafb9" stroke-dasharray="5 5"/><text x="${sw/2}" y="${Y(c.usableL)+Math.max(12,HH(L-c.usableL)/2)}" fill="#6b7f8d" text-anchor="middle" font-size="13" font-weight="700">RESERVA ${dec(data.reservePct,0)} %</text>`);
-const ordered=[...c.placed].sort((a,b)=>a.z-b.z);for(let i=0;i<ordered.length;i++){const p=ordered[i],x=X(p.x),y=Y(p.y),w=WW(p.w),h=HH(p.l),short=esc(p.name.length>19?p.name.slice(0,16)+'…':p.name);pieces.push(`<g data-unit="${esc(p.key)}" data-z="${p.z}"><rect x="${x+1}" y="${y+1}" width="${Math.max(0,w-2)}" height="${Math.max(0,h-2)}" rx="3" fill="${p.color}" fill-opacity=".82" stroke="#ffffff" stroke-width="1.2"/><title>V2.3 · ${esc(p.name)} · ${int(p.units)} unidad(es) · ${int(p.w)} × ${int(p.l)} cm de base · ${int(p.h)} cm de alto · base Z=${dec(p.z,1)} cm · ${dec(p.kg,1)} kg · carga encima ${dec(p.topKg,1)} kg</title>`);if(w>54&&h>23)pieces.push(`<text x="${x+w/2}" y="${y+h/2-3}" text-anchor="middle" fill="white" font-size="${Math.min(12,Math.max(9,w/10))}" font-weight="700">${short}</text><text x="${x+w/2}" y="${y+h/2+12}" text-anchor="middle" fill="white" font-size="11">Z=${dec(p.z,1)} cm</text>`);else if(w>24&&h>16)pieces.push(`<text x="${x+w/2}" y="${y+h/2+4}" text-anchor="middle" fill="white" font-size="10">${esc(String(i+1))}</text>`);pieces.push('</g>');}
+if(c.usableL<L)pieces.push(`<rect x="${px}" y="${Y(c.usableL)}" width="${rw}" height="${HH(L-c.usableL)}" fill="#e7ebed" stroke="#9aafb9" stroke-dasharray="5 5"/><text x="${sw/2}" y="${Y(c.usableL)+Math.max(12,HH(L-c.usableL)/2)}" fill="#6b7f8d" text-anchor="middle" font-size="13" font-weight="700">RESERVA ${dec(data.reservePct,0)} %</text>`);
+for(const o of c.v.obstacles||[])pieces.push(`<g data-obstacle="${esc(o.id)}"><rect x="${X(o.x)}" y="${Y(o.y)}" width="${WW(o.w)}" height="${HH(o.l)}" fill="#8f6550" fill-opacity=".45" stroke="#7c4634" stroke-dasharray="4 3"/><title>Obstáculo: ${esc(o.name)} · Z ${o.z} cm</title></g>`);
+const ordered=[...c.placed].sort((a,b)=>a.z-b.z);for(let i=0;i<ordered.length;i++){const p=ordered[i],x=X(p.x),y=Y(p.y),w=WW(p.w),h=HH(p.l),short=esc(p.name.length>19?p.name.slice(0,16)+'…':p.name);pieces.push(`<g data-unit="${esc(p.key)}" data-z="${p.z}"><rect x="${x+1}" y="${y+1}" width="${Math.max(0,w-2)}" height="${Math.max(0,h-2)}" rx="3" fill="${p.color}" fill-opacity=".82" stroke="#ffffff" stroke-width="1.2"/><title>V2.6 · ${esc(p.name)} · ${int(p.units)} unidad(es) · ${int(p.w)} × ${int(p.l)} cm de base · ${int(p.h)} cm de alto · base Z=${dec(p.z,1)} cm · ${dec(p.kg,1)} kg · carga encima ${dec(p.topKg,1)} kg</title>`);if(w>54&&h>23)pieces.push(`<text x="${x+w/2}" y="${y+h/2-3}" text-anchor="middle" fill="white" font-size="${Math.min(12,Math.max(9,w/10))}" font-weight="700">${short}</text><text x="${x+w/2}" y="${y+h/2+12}" text-anchor="middle" fill="white" font-size="11">Z=${dec(p.z,1)} cm</text>`);else if(w>24&&h>16)pieces.push(`<text x="${x+w/2}" y="${y+h/2+4}" text-anchor="middle" fill="white" font-size="10">${esc(String(i+1))}</text>`);pieces.push('</g>');}
 pieces.push(`<text x="${sw/2}" y="17" text-anchor="middle" fill="#526677" font-size="14" font-weight="700">ANCHO INTERIOR · ${int(W)} cm</text><text x="${sw/2}" y="${sh-4}" text-anchor="middle" fill="#607787" font-size="12">FONDO / PARTE TRASERA</text><text x="${px+5}" y="${px+16}" text-anchor="start" fill="#3d5868" font-size="10">FRENTE</text></svg>`);return pieces.join('');}
 function tableHtml(c){if(!c.details?.length)return '<div class="empty">No hay elementos añadidos a este plan.</div>';return `<div class="table-scroll"><table class="data-table"><thead><tr><th>Material</th><th class="num">Uds.</th><th class="num">Medidas (cm)</th><th class="num">Volumen</th><th class="num">Masa</th><th class="no-print"></th></tr></thead><tbody>${c.details.map(m=>`<tr><td><b>${esc(m.name)}</b><div class="muted">${m.levels===1?'No recibe bultos':'Hasta '+m.levels+' niveles'}</div></td><td class="num"><input class="no-print" style="width:65px;text-align:right;border:1px solid var(--line);border-radius:6px;padding:5px" aria-label="Cantidad de ${esc(m.name)}" data-plan-qty="${esc(m.id)}" type="number" min="0" max="1000" step="1" value="${m.qty}"/><span class="print-only">${int(m.qty)}</span></td><td class="num">${dimensions(m)}</td><td class="num">${dec(m.volume,2)} m³</td><td class="num">${dec(m.totalKg,0)} kg</td><td class="no-print"><button class="small danger" data-remove="${esc(m.id)}">Quitar</button></td></tr>`).join('')}</tbody><tfoot><tr><td>TOTAL</td><td class="num">${int(c.pieces)}</td><td></td><td class="num">${dec(c.totalVol,2)} m³</td><td class="num">${dec(c.totalKg,0)} kg</td><td class="no-print"></td></tr></tfoot></table></div>`;}
-function planPage(){const c=calculate(),v=vehicle();lastCalc=c;const matOpts=data.materials.map(m=>`<option value="${esc(m.id)}">${esc(m.name)} · ${dimensions(m)}</option>`).join('');return `<div class="toolbar no-print"><div><div class="kicker">PLAN DE CARGA ACTUAL</div><div style="font-size:12px;color:var(--muted)">Datos de ejemplo iniciales: no corresponden a ningún vehículo real.</div></div><div class="tools desktop-tools"><button data-action="export">Exportar datos</button><button data-action="import">Importar datos</button><button data-action="csv">CSV del plan</button><button data-action="reset" title="Empezar sin los materiales y vehículos de ejemplo">Nuevo desde cero</button><button class="dark" data-action="print">Imprimir informe</button></div><details class="mobile-data-menu"><summary>Copias de seguridad, exportar e imprimir</summary><div class="tools"><button data-action="export">Exportar datos</button><button data-action="import">Importar datos</button><button data-action="csv">CSV del plan</button><button data-action="reset" title="Empezar sin los materiales y vehículos de ejemplo">Nuevo desde cero</button><button class="dark" data-action="print">Imprimir informe</button></div></details></div><nav class="mobile-jumps no-print" aria-label="Atajos del plan"><button type="button" data-jump="carga">Cargar</button><button type="button" data-jump="resultado">Resultado</button><button type="button" data-jump="3d">Vista 3D</button><button type="button" data-jump="manifiesto">Listado</button></nav><div class="print-only"><h1>INFORME DE PLANIFICACIÓN DE CARGA</h1><p>Fecha: ${esc(new Date().toLocaleDateString('es-ES'))} · Vehículo: ${esc(v?.name||'Sin definir')} · Dimensiones interiores: ${v?dimensions(v):'—'}</p></div><div class="layout"><div class="left-stack no-print"><section class="panel" id="seccion-carga"><h2>1. Vehículo</h2><div class="field"><label for="selvehicle">Selecciona el vehículo</label><select id="selvehicle">${data.vehicles.length?data.vehicles.map(x=>`<option value="${esc(x.id)}" ${x.id===data.selectedVehicleId?'selected':''}>${esc(x.name)}</option>`).join(''):'<option value="">Sin vehículos guardados</option>'}</select></div>${v?`<p class="help">Interior: <b>${dimensions(v)}</b> · Caja: <b>${dec(vol(v.l,v.w,v.h),2)} m³</b> · Carga útil: <b>${int(v.payload)} kg</b>${v.doorW&&v.doorH?` · Puerta: <b>${int(v.doorW)} × ${int(v.doorH)} cm</b>`:''}</p>`:''}<button class="ghost small" style="margin-top:10px" data-tab="vehicles">+ Añadir / editar vehículo</button><div class="section-space"><div class="field"><label for="reserva">Reserva operativa: <span id="reslabel">${dec(data.reservePct,0)}</span> % de longitud de caja</label><input id="reserva" type="range" min="0" max="35" step="5" value="${data.reservePct}" /><div class="help">15 % por defecto: zona libre conservadora para maniobra y estiba. La colocación también calcula los huecos reales.</div></div></div></section><section class="panel"><h2>2. Añadir material</h2><form id="addForm"><div class="field"><label for="selmaterial">Material del catálogo</label><select id="selmaterial" required>${matOpts||'<option value="">Sin materiales guardados</option>'}</select></div><div class="inline" style="margin-top:11px"><div class="field qty"><label for="addQty">Unidades</label><input id="addQty" name="qty" type="number" min="1" max="1000" value="1" required/></div><button class="primary" type="submit" ${!data.materials.length?'disabled':''}>Añadir a carga</button></div></form><button class="ghost small" style="margin-top:12px" data-tab="materials">+ Crear / editar material</button><div class="section-space"><button class="danger small" data-action="clear">Vaciar este plan</button></div></section><section class="panel"><h3>Qué se comprueba</h3><p class="help">Volumen, medidas individuales, paso por la puerta (si se declara), peso total, suelo necesario y distribución en planta. Se calculan posiciones X/Y/Z, apoyo completo en un único bulto, niveles y masa acumulada sobre cada soporte.</p><div class="callout" style="margin-top:12px">Un resultado positivo es una <b>propuesta preliminar de encaje</b>, no una validación de seguridad vial ni un plan de estiba certificado.</div></section></div><div class="right-stack"><section class="panel" id="seccion-resultado"><div class="panelhead"><h2>3. Resultado de viabilidad</h2><span class="pill">${v?esc(v.name):'Sin vehículo'}</span></div>${c.v&&c.details?summary(c):`<div class="status neutral">${esc(c.headline)}</div><p class="help" style="margin-top:8px">${esc(c.notes?.[0]||'')}</p>`}</section><section class="panel visual-panel" id="seccion-3d"><div class="panelhead"><div><h2>4. Distribución de carga · vista 3D interactiva</h2><p>La altura, el apilamiento y la posición horizontal de cada bulto se muestran a escala proporcional.</p></div><span class="pill no-print">3D sin conexión</span></div><div class="scene-controls no-print"><button class="active-view" data-action="3d-iso">Isométrica</button><button data-action="3d-front">Frontal</button><button data-action="3d-side">Lateral</button><button data-action="3d-top">Desde arriba</button><button data-action="3d-reset">Recentrar</button><button data-action="3d-in" title="Acercar el croquis">Zoom +</button><button data-action="3d-out" title="Alejar el croquis">Zoom −</button><button data-action="3d-png">Guardar croquis PNG</button></div><div class="v3-pills"><span>${v?`Caja: ${dimensions(v)}`:'Sin vehículo'}</span><span>Unidades ubicadas: ${int(c.loaded||0)} / ${int(c.pieces||0)}</span><span>${c.placed?.length||0} bultos individuales</span></div><div class="scene3d"><canvas id="load3d" role="img" aria-label="Modelo 3D interactivo de los bultos colocados en la caja del vehículo" tabindex="0"></canvas><div class="scene-help no-print">Girar: arrastra · Zoom: pellizca con 2 dedos · Pulsa un bulto</div><button type="button" class="scene-expand no-print" data-action="3d-expand" aria-label="Ampliar la vista 3D">⤢ Ampliar 3D</button></div><div id="threeInfo" class="scene-info no-print" aria-live="polite">Vista tridimensional de la propuesta; selecciona un bulto para ver su altura, medidas y peso.</div><div class="scene-bottom no-print"><div class="field"><label for="threeCut">Corte vertical: <b id="cutValue">${v?int(v.h):0} cm</b> (altura visualizada)</label><input id="threeCut" type="range" min="0" max="${v?Math.ceil(v.h):1}" step="5" value="${v?Math.ceil(v.h):1}"/><small>Reduce la altura visible para inspeccionar las capas inferiores; no modifica el cálculo.</small></div><div class="field"><label for="threeFocus">Destacar material</label><select id="threeFocus"><option value="">Todos los materiales</option>${c.details?.map(m=>`<option value="${esc(m.id)}">${esc(m.name)}</option>`).join('')||''}</select><small>Los materiales restantes quedan atenuados, no retirados de la carga.</small></div></div><p class="help" style="margin-top:12px">Modelo de la <b>disposición propuesta</b>, no simulación física de la estiba. La búsqueda 3D permite varios bultos por superficie y mezcla autorizada. No comprueba estabilidad, amarres o reparto por ejes. La masa soportada se comprueba solo si se declara su límite.</p></section><section class="panel visual-panel"><div class="panelhead"><div><h2>5. Distribución propuesta · vista superior</h2><p>Proyección superior de los mismos bultos del 3D; Z indica la altura de su base. Los superiores ocultan parte de los inferiores.</p></div></div><div class="vizbox"><div class="plan-wrap">${planSvg(c)}</div><aside class="legend"><b>LEYENDA</b><div style="margin-top:8px">${c.details?.map(m=>`<div class="legendrow"><span class="swatch" style="background:${c.byColor[m.id]}"></span><span>${esc(m.name)}</span></div>`).join('')||'<span class="muted">No hay materiales.</span>'}<div class="legendrow" style="margin-top:14px"><span class="swatch" style="background:#e7ebed;border:1px dashed #9aafb9"></span><span>Reserva operativa</span></div></div>${c.v?`<hr style="border:0;border-top:1px solid var(--line)"><div>Suelo ocupado en propuesta: <b>${dec(c.placedArea,2)} m²</b></div><div class="bar"><i style="width:${Math.min(100,100*c.placedArea/c.floor)||0}%"></i></div><div>${dec(c.placedArea/c.floor*100,1)} % del suelo operativo</div><p class="help" style="margin-top:10px">La disposición se calcula automáticamente. La posición definitiva debe comprobarse en la carga real.</p>`:''}</aside></div></section><section class="panel" id="seccion-manifiesto"><h2>6. Manifiesto de carga</h2>${tableHtml(c)}</section></div></div><p class="footer">Versión local 2.3 · Almacenamiento exclusivo en este navegador. Para trasladar los datos a otro equipo, usa «Exportar datos» e «Importar datos». No se solicita ni se transmite información por Internet.</p>`}
-function vehiclesPage(){const v=editV?data.vehicles.find(x=>x.id===editV):null;return `<div class="toolbar"><div><div class="kicker">CATÁLOGO DE VEHÍCULOS</div><h2>Vehículos y cajas de carga</h2></div><button data-action="export">Exportar datos</button></div><section class="panel formcard"><h2>${v?'Editar vehículo':'Registrar vehículo'}</h2><form id="vehicleForm" class="formgrid"><div class="field full"><label>Identificación / denominación</label><input name="name" maxlength="120" placeholder="Ej.: Camión carga 01" value="${esc(v?.name||'')}" required/></div>${[['l','Longitud interior (cm)'],['w','Anchura interior (cm)'],['h','Altura interior (cm)'],['payload','Carga útil autorizada (kg)'],['doorW','Anchura libre de puerta (cm) · opcional'],['doorH','Altura libre de puerta (cm) · opcional']].map(([key,label])=>`<div class="field"><label>${label}</label><input name="${key}" type="number" step="0.1" min="0" ${!['doorW','doorH'].includes(key)?'required':''} placeholder="${['doorW','doorH'].includes(key)?'Sin dato':'0'}" value="${v?esc(v[key]):''}"/></div>`).join('')}<div class="field full"><div class="inline"><button class="primary" type="submit">${v?'Guardar cambios':'Guardar vehículo'}</button>${v?'<button type="button" data-action="cancel-edit-v">Cancelar edición</button>':''}</div><p class="help">Mide el espacio interior útil, descontando pasos de rueda, mamparos, arcos y otros obstáculos. La forma de la caja se aproxima como un prisma rectangular.</p></div></form></section><section class="section-space"><h2>Vehículos guardados (${data.vehicles.length})</h2><div class="collection">${data.vehicles.map(x=>`<article class="item-card"><div class="name">${esc(x.name)}</div><p>Interior: <b>${dimensions(x)}</b><br>Volumen: ${dec(vol(x.l,x.w,x.h),2)} m³<br>Carga útil: ${int(x.payload)} kg${x.doorW&&x.doorH?`<br>Puerta: ${int(x.doorW)} × ${int(x.doorH)} cm`:''}</p><div class="actions"><button class="small" data-edit-v="${esc(x.id)}">Editar</button><button class="small" data-select-v="${esc(x.id)}">Usar en plan</button><button class="small danger" data-delete-v="${esc(x.id)}">Eliminar</button></div></article>`).join('')||'<div class="empty">No hay vehículos.</div>'}</div></section>`;}
-function materialsPage(){const m=editM?data.materials.find(x=>x.id===editM):null;return `<div class="toolbar"><div><div class="kicker">CATÁLOGO DE MATERIALES</div><h2>Bultos y unidades de carga</h2></div><button data-action="export">Exportar datos</button></div><section class="panel formcard"><h2>${m?'Editar material':'Registrar material'}</h2><form id="materialForm" class="formgrid"><div class="field full"><label>Denominación del material embalado</label><input name="name" maxlength="120" placeholder="Ej.: Caja de repuestos en embalaje" value="${esc(m?.name||'')}" required/></div>${[['l','Longitud exterior (cm)'],['w','Anchura exterior (cm)'],['h','Altura exterior (cm)'],['kg','Masa de una unidad (kg)']].map(([key,label])=>`<div class="field"><label>${label}</label><input name="${key}" type="number" step="0.1" min="${key==='kg'?'0':'0.1'}" placeholder="0" value="${m?esc(m[key]):''}" required/></div>`).join('')}<div class="field"><label>Máximo de niveles (incluida la base)</label><input name="levels" type="number" step="1" min="1" max="30" value="${m?esc(m.levels):'1'}" required/><small>Máximo de niveles sobre este soporte, incluida su propia base. 1 = no recibe bultos. Un bulto de nivel máximo 1 sí puede ir encima de otro.</small></div><div class="field"><label>Orientación en la caja</label><label class="checkboxline"><input name="rotate" type="checkbox" ${!m||m.rotate?'checked':''}/> Permitir giro de 90° en planta</label><small>No se permite tumbar el bulto.</small></div><div class="field full"><label class="checkboxline"><input name="stackable" type="checkbox" ${!m||m.stackable!==false?'checked':''}/> Permitir recibir bultos encima (también requiere niveles &gt; 1)</label><label class="checkboxline"><input name="mixedAbove" type="checkbox" ${m?.mixedAbove?'checked':''}/> Permitir recibir materiales diferentes encima</label><small>En fichas antiguas la mezcla permanece desactivada. El permiso se aplica al contacto directo.</small></div><div class="field"><label>Masa máxima soportada encima (kg)</label><input name="maxTopKg" type="number" min="0" step="0.1" placeholder="Sin dato" value="${m?.maxTopKg??''}"/><small>Incluye todos los descendientes. 0 impide carga con masa positiva; vacío = resistencia no verificada.</small></div><div class="field full"><div class="inline"><button class="primary" type="submit">${m?'Guardar cambios':'Guardar material'}</button>${m?'<button type="button" data-action="cancel-edit-m">Cancelar edición</button>':''}</div><p class="help">Introduce las medidas EXTERIORES, incluyendo embalajes, asas y salientes. Si el material va sobre palé, mide el conjunto completo como una unidad.</p></div></form></section><section class="section-space"><h2>Materiales guardados (${data.materials.length})</h2><div class="collection">${data.materials.map(x=>`<article class="item-card"><div class="name">${esc(x.name)}</div><p>${dimensions(x)} · ${dec(x.kg,0)} kg/ud.<br>${dec(vol(x.l,x.w,x.h),3)} m³/ud. · ${x.levels===1?'No recibe bultos':'Máx. '+x.levels+' niveles'} · ${x.rotate?'Giro 90° admitido':'Orientación fija'}<br>${x.stackable===false?'No recibe bultos':x.mixedAbove?'Admite mezcla encima':'Solo mismo material encima'} · ${x.maxTopKg==null?'Resistencia no verificada':'Máx. encima: '+dec(x.maxTopKg,1)+' kg'}</p><div class="actions"><button class="small" data-edit-m="${esc(x.id)}">Editar</button><button class="small danger" data-delete-m="${esc(x.id)}">Eliminar</button></div></article>`).join('')||'<div class="empty">No hay materiales.</div>'}</div></section>`;}
-function helpPage(){return `<div class="toolbar"><div><div class="kicker">GUÍA DE EMPLEO</div><h2>Criterios de cálculo y seguridad</h2></div></div><div class="help-columns"><section class="panel"><h3>1. No basta con comparar metros cúbicos</h3><p>Dos cargas con idéntico volumen pueden encajar de forma distinta por sus dimensiones y por el orden de colocación. Esta herramienta sitúa prismas individuales en X/Y/Z sobre el suelo o sobre una única base inferior. Cada superficie puede recibir varios bultos sin voladizos ni intersecciones. La mezcla debe autorizarse en el bulto de apoyo.</p><p><b>Volumen de un bulto:</b> longitud × anchura × altura. Con centímetros, divide el producto entre 1.000.000 para obtener m³.</p></section><section class="panel"><h3>2. Reserva de seguridad / ineficiencia</h3><p>Como criterio inicial no normativo, usa <b>10 %</b> en cajas homogéneas, <b>15 %</b> en mezcla habitual y <b>20–25 %</b> en formas dispares.</p><p>La reserva del plan se traduce en una <b>franja de longitud libre</b> al fondo; no se resta un segundo porcentaje a los bultos. Los huecos geométricos aparecen automáticamente en el plano.</p></section><section class="panel"><h3>3. Resultado «no se encontró acomodo»</h3><p>El programa utiliza una búsqueda heurística de hasta 12 estrategias de orden y colocación 3D, limitada a 500 bultos y un presupuesto de operaciones. Si no consigue ubicar todas las piezas, <b>no demuestra que sea imposible</b>. Puede exigir estiba manual, distinta orientación, reorganización o otro vehículo.</p><p>El plano tampoco determina si es físicamente posible introducir cada bulto por un pasillo de carga ocupado.</p></section><section class="panel"><h3>4. Restricciones que debes verificar</h3><p>Además de tamaño y masa total: reparto de peso por ejes, resistencia del piso, amarre, estabilidad, centro de gravedad, restricciones para apilar, salientes de la caja, puerta/rampa, medios de elevación y orden de descarga.</p><p><b>Un encaje positivo NO equivale a autorización de transporte o estiba segura.</b></p></section><section class="panel"><h3>5. Vista 3D y corte por altura</h3><p>El croquis 3D muestra cada bulto individual colocado donde lo situó el algoritmo, con su altura real y apilado vertical. Puedes girarlo, ampliar y hacer un corte de altura para ver las capas inferiores.</p><p><b>Importante:</b> el modelo 3D representa directamente las coordenadas X/Y/Z calculadas, sin reagrupar cajas en columnas. Un resultado de no encaje sigue siendo no concluyente.</p></section><section class="panel"><h3>6. Datos y uso sin red</h3><p>Los catálogos y el plan actual se guardan en el almacenamiento local del navegador. Si se borra la información del navegador podrían perderse. En móviles, abrir un archivo HTML desde un visor o desde otra ruta puede impedir el guardado o crear un almacenamiento separado.</p><p>Exporta periódicamente a <code>.json</code> para copia y traslado entre equipos; el <code>.csv</code> resume el manifiesto. No usa servidores, mapas ni librerías externas. La versión HTML funciona desde un archivo, pero no es una aplicación nativa ni se sincroniza sola entre móviles y ordenadores.</p></section><section class="panel"><h3>7. Cómo comenzar</h3><p>Registra las medidas reales del vehículo, mide cada bulto embalado, declara su masa y número máximo de niveles, selecciona el vehículo y añade cantidades. Ajusta la reserva y consulta el plano y las advertencias. Los registros marcados EJEMPLO son ficticios.</p></section></div>`;}
+function planPage(){const c=data.mode==='convoy'?selectedConvoyView():calculate(),v=c.v;lastCalc=c;const matOpts=data.materials.map(m=>`<option value="${esc(m.id)}">${esc(m.name)} · ${dimensions(m)}</option>`).join('');return `<div class="toolbar no-print"><div><div class="kicker">PLAN DE CARGA ACTUAL</div><div style="font-size:12px;color:var(--muted)">Datos de ejemplo iniciales: no corresponden a ningún vehículo real.</div></div><div class="tools desktop-tools"><button data-action="export">Exportar datos</button><button data-action="import">Importar datos</button><button data-action="csv">CSV del plan</button><button data-action="reset" title="Empezar sin los materiales y vehículos de ejemplo">Nuevo desde cero</button><button class="dark" data-action="print">Imprimir informe</button></div><details class="mobile-data-menu"><summary>Copias de seguridad, exportar e imprimir</summary><div class="tools"><button data-action="export">Exportar datos</button><button data-action="import">Importar datos</button><button data-action="csv">CSV del plan</button><button data-action="reset" title="Empezar sin los materiales y vehículos de ejemplo">Nuevo desde cero</button><button class="dark" data-action="print">Imprimir informe</button></div></details></div><nav class="mobile-jumps no-print" aria-label="Atajos del plan"><button type="button" data-jump="carga">Cargar</button><button type="button" data-jump="resultado">Resultado</button><button type="button" data-jump="3d">Vista 3D</button><button type="button" data-jump="manifiesto">Listado</button></nav>${modeSwitcher()}${data.mode==='convoy'?convoyResults():''}<div class="print-only"><h1>INFORME DE PLANIFICACIÓN DE CARGA</h1><p>Fecha: ${esc(new Date().toLocaleDateString('es-ES'))} · Vehículo: ${esc(v?.name||'Sin definir')} · Dimensiones interiores: ${v?dimensions(v):'—'}</p></div><div class="layout"><div class="left-stack no-print"><section class="panel" id="seccion-carga"><h2>1. Vehículo</h2>${data.mode==='convoy'?fleetControls():`<div class="field"><label for="selvehicle">Selecciona el vehículo</label><select id="selvehicle">${data.vehicles.length?data.vehicles.map(x=>`<option value="${esc(x.id)}" ${x.id===data.selectedVehicleId?'selected':''}>${esc(x.name)}</option>`).join(''):'<option value="">Sin vehículos guardados</option>'}</select></div>${configPicker(v,'individual-config')}${v?`<p class="help">Interior: <b>${dimensions(v)}</b> · Caja: <b>${dec(vol(v.l,v.w,v.h),2)} m³</b> · Carga útil: <b>${int(v.payload)} kg</b>${v.doorW&&v.doorH?` · Puerta: <b>${int(v.doorW)} × ${int(v.doorH)} cm</b>`:''}</p>`:''}<button class="ghost small" style="margin-top:10px" data-tab="vehicles">+ Añadir / editar vehículo</button>`}<div class="section-space"><div class="field"><label for="reserva">Reserva operativa: <span id="reslabel">${dec(data.reservePct,0)}</span> % de longitud de caja</label><input id="reserva" type="range" min="0" max="35" step="any" value="${data.reservePct}" /><div class="help">15 % por defecto: zona libre conservadora para maniobra y estiba. La colocación también calcula los huecos reales.</div></div></div></section><section class="panel"><h2>2. Añadir material</h2><form id="addForm"><div class="field"><label for="selmaterial">Material del catálogo</label><select id="selmaterial" required>${matOpts||'<option value="">Sin materiales guardados</option>'}</select></div><div class="inline" style="margin-top:11px"><div class="field qty"><label for="addQty">Unidades</label><input id="addQty" name="qty" type="number" min="1" max="1000" value="1" required/></div><button class="primary" type="submit" ${!data.materials.length?'disabled':''}>Añadir a carga</button></div></form><button class="ghost small" style="margin-top:12px" data-tab="materials">+ Crear / editar material</button><div class="section-space"><button class="danger small" data-action="clear">Vaciar este plan</button></div></section><section class="panel"><h3>Qué se comprueba</h3><p class="help">Volumen, medidas individuales, paso por la puerta (si se declara), peso total, suelo necesario y distribución en planta. Se calculan posiciones X/Y/Z, apoyo completo en un único bulto, niveles y masa acumulada sobre cada soporte.</p><div class="callout" style="margin-top:12px">Un resultado positivo es una <b>propuesta preliminar de encaje</b>, no una validación de seguridad vial ni un plan de estiba certificado.</div></section></div><div class="right-stack"><section class="panel" id="seccion-resultado"><div class="panelhead"><h2>3. Resultado de viabilidad</h2><span class="pill">${v?esc(v.name):'Sin vehículo'}</span></div>${c.v&&c.details?summary(c)+(data.mode==='convoy'?'':pendingHtml(c.pending)):`<div class="status neutral">${esc(c.headline)}</div><p class="help" style="margin-top:8px">${esc(c.notes?.[0]||'')}</p>`}</section><section class="panel visual-panel" id="seccion-3d"><div class="panelhead"><div><h2>4. Distribución de carga · vista 3D interactiva</h2><p>La altura, el apilamiento y la posición horizontal de cada bulto se muestran a escala proporcional.</p></div><span class="pill no-print">3D sin conexión</span></div><div class="scene-controls no-print"><button class="active-view" data-action="3d-iso">Isométrica</button><button data-action="3d-front">Frontal</button><button data-action="3d-side">Lateral</button><button data-action="3d-top">Desde arriba</button><button data-action="3d-reset">Recentrar</button><button data-action="3d-in" title="Acercar el croquis">Zoom +</button><button data-action="3d-out" title="Alejar el croquis">Zoom −</button><button data-action="3d-png">Guardar croquis PNG</button></div><div class="v3-pills"><span>${v?`Caja: ${dimensions(v)}`:'Sin vehículo'}</span><span>Unidades ubicadas: ${int(c.loaded||0)} / ${int(c.pieces||0)}</span><span>${c.placed?.length||0} bultos individuales</span></div>${data.mode==='convoy'&&c.v?convoyScenePicker():''}<div class="scene3d"><canvas id="load3d" role="img" aria-label="Croquis 3D del vehículo, obstáculos y zona exterior de pendientes" tabindex="0"></canvas><div class="scene-help no-print">Girar: arrastra · Zoom: pellizca con 2 dedos · Pulsa un bulto</div><button type="button" class="scene-expand no-print" data-action="3d-expand" aria-label="Ampliar la vista 3D">⤢ Ampliar 3D</button></div>${obstacleLegend(c.v)}${pendingLegend(c.scenePending??c.pending)}<div id="threeInfo" class="scene-info no-print" aria-live="polite">Vista tridimensional de la propuesta; selecciona un bulto para ver su altura, medidas y peso.</div><div class="scene-bottom no-print"><div class="field"><label for="threeCut">Corte vertical: <b id="cutValue">${v?int(v.h):0} cm</b> (altura visualizada)</label><input id="threeCut" type="range" min="0" max="${v?Math.ceil(v.h):1}" step="5" value="${v?Math.ceil(v.h):1}"/><small>Reduce la altura visible para inspeccionar las capas inferiores; no modifica el cálculo.</small></div><div class="field"><label for="threeFocus">Destacar material</label><select id="threeFocus"><option value="">Todos los materiales</option>${c.details?.map(m=>`<option value="${esc(m.id)}">${esc(m.name)}</option>`).join('')||''}</select><small>Los materiales restantes quedan atenuados, no retirados de la carga.</small></div></div><p class="help" style="margin-top:12px">Modelo de la <b>disposición propuesta</b>, no simulación física de la estiba. La búsqueda 3D permite varios bultos por superficie y mezcla autorizada. No comprueba estabilidad, amarres o reparto por ejes. La masa soportada se comprueba solo si se declara su límite.</p></section><section class="panel visual-panel"><div class="panelhead"><div><h2>5. Distribución propuesta · vista superior</h2><p>Proyección superior de los mismos bultos del 3D; Z indica la altura de su base. Los superiores ocultan parte de los inferiores.</p></div></div><div class="vizbox"><div class="plan-wrap">${planSvg(c)}</div><aside class="legend"><b>LEYENDA</b><div style="margin-top:8px">${c.details?.map(m=>`<div class="legendrow"><span class="swatch" style="background:${c.byColor[m.id]}"></span><span>${esc(m.name)}</span></div>`).join('')||'<span class="muted">No hay materiales.</span>'}<div class="legendrow" style="margin-top:14px"><span class="swatch" style="background:#e7ebed;border:1px dashed #9aafb9"></span><span>Reserva operativa</span></div></div>${c.v?`<hr style="border:0;border-top:1px solid var(--line)"><div>Suelo ocupado en propuesta: <b>${dec(c.placedArea,2)} m²</b></div><div class="bar"><i style="width:${Math.min(100,100*c.placedArea/c.floor)||0}%"></i></div><div>${dec(c.placedArea/c.floor*100,1)} % del suelo operativo</div><p class="help" style="margin-top:10px">La disposición se calcula automáticamente. La posición definitiva debe comprobarse en la carga real.</p>`:''}</aside></div></section><section class="panel" id="seccion-manifiesto"><h2>6. Manifiesto de carga</h2>${tableHtml(data.mode==='convoy'?manifestSummary():c)}${data.mode==='convoy'?vehicleManifest(c):''}</section></div></div><p class="footer">Versión local 2.6 · Almacenamiento exclusivo en este navegador. Para trasladar los datos a otro equipo, usa «Exportar datos» e «Importar datos». No se solicita ni se transmite información por Internet.</p>`}
+function vehiclesPage(){const v=editV?data.vehicles.find(x=>x.id===editV):null;return `<div class="toolbar"><div><div class="kicker">CATÁLOGO DE VEHÍCULOS</div><h2>Vehículos y cajas de carga</h2></div><button data-action="export">Exportar datos</button></div><section class="panel formcard"><h2>${v?'Editar vehículo':'Registrar vehículo'}</h2><form id="vehicleForm" class="formgrid"><div class="field full"><label>Identificación / denominación</label><input name="name" maxlength="120" placeholder="Ej.: Camión carga 01" value="${esc(v?.name||'')}" required/></div>${[['l','Longitud interior (cm)'],['w','Anchura interior (cm)'],['h','Altura interior (cm)'],['payload','Carga útil autorizada (kg)'],['doorW','Anchura libre de puerta (cm) · opcional'],['doorH','Altura libre de puerta (cm) · opcional']].map(([key,label])=>`<div class="field"><label>${label}</label><input name="${key}" type="number" step="0.1" min="0" ${!['doorW','doorH'].includes(key)?'required':''} placeholder="${['doorW','doorH'].includes(key)?'Sin dato':'0'}" value="${v?esc(v[key]):''}"/></div>`).join('')}<div class="field full"><div class="inline"><button class="primary" type="submit">${v?'Guardar cambios':'Guardar vehículo'}</button>${v?'<button type="button" data-action="cancel-edit-v">Cancelar edición</button>':''}</div><p class="help">Mide el espacio interior útil, como una caja rectangular envolvente. Registra los elementos que invaden su interior en «Obstáculos interiores».</p></div></form></section>${v?obstacleEditor(v):''}<section class="section-space"><h2>Vehículos guardados (${data.vehicles.length})</h2><div class="collection">${data.vehicles.map(x=>`<article class="item-card"><div class="name">${esc(x.name)}</div><p>Interior: <b>${dimensions(x)}</b><br>Volumen: ${dec(vol(x.l,x.w,x.h),2)} m³<br>Carga útil: ${int(x.payload)} kg${x.doorW&&x.doorH?`<br>Puerta: ${int(x.doorW)} × ${int(x.doorH)} cm`:''}</p><div class="actions"><button class="small" data-edit-v="${esc(x.id)}">Editar</button><button class="small" data-select-v="${esc(x.id)}">Usar en plan</button><button class="small danger" data-delete-v="${esc(x.id)}">Eliminar</button></div></article>`).join('')||'<div class="empty">No hay vehículos.</div>'}</div></section>`;}
+function materialsPage(){const m=editM?data.materials.find(x=>x.id===editM):null;return `<div class="toolbar"><div><div class="kicker">CATÁLOGO DE MATERIALES</div><h2>Bultos y unidades de carga</h2></div><button data-action="export">Exportar datos</button></div><section class="panel formcard"><h2>${m?'Editar material':'Registrar material'}</h2><form id="materialForm" class="formgrid"><div class="field full"><label>Denominación del material embalado</label><input name="name" maxlength="120" placeholder="Ej.: Caja de repuestos en embalaje" value="${esc(m?.name||'')}" required/></div>${[['l','Longitud exterior (cm)'],['w','Anchura exterior (cm)'],['h','Altura exterior (cm)'],['kg','Masa de una unidad (kg)']].map(([key,label])=>`<div class="field"><label>${label}</label><input name="${key}" type="number" step="0.1" min="${key==='kg'?'0':'0.1'}" placeholder="0" value="${m?esc(m[key]):''}" required/></div>`).join('')}<div class="field"><label>Máximo de niveles (incluida la base)</label><input name="levels" type="number" step="1" min="1" max="30" value="${m?esc(m.levels):'2'}" required/><small>Máximo de niveles sobre este soporte, incluida su propia base. 1 = no recibe bultos. Un bulto de nivel máximo 1 sí puede ir encima de otro.</small></div><div class="field"><label>Orientación en la caja</label><label class="checkboxline"><input name="rotate" type="checkbox" ${!m||m.rotate?'checked':''}/> Permitir giro de 90° en planta</label><small>No se permite tumbar el bulto.</small></div><div class="field full"><label class="checkboxline"><input name="stackable" type="checkbox" ${!m||m.stackable!==false?'checked':''}/> Permitir recibir bultos encima (también requiere niveles &gt; 1)</label><label class="checkboxline"><input name="mixedAbove" type="checkbox" ${m?.mixedAbove!==false?'checked':''}/> Permitir recibir materiales diferentes encima</label><small>Por defecto se admite cualquier material encima. Desactiva el permiso para limitarlo. Se respetan las restricciones guardadas y el máximo de niveles.</small></div><div class="field"><label>Masa máxima soportada encima (kg)</label><input name="maxTopKg" type="number" min="0" step="0.1" placeholder="Sin dato" value="${m?.maxTopKg??''}"/><small>Incluye todos los descendientes. 0 impide carga con masa positiva; vacío = resistencia no verificada.</small></div><div class="field full"><div class="inline"><button class="primary" type="submit">${m?'Guardar cambios':'Guardar material'}</button>${m?'<button type="button" data-action="cancel-edit-m">Cancelar edición</button>':''}</div><p class="help">Introduce las medidas EXTERIORES, incluyendo embalajes, asas y salientes. Si el material va sobre palé, mide el conjunto completo como una unidad.</p></div></form></section><section class="section-space"><h2>Materiales guardados (${data.materials.length})</h2><div class="collection">${data.materials.map(x=>`<article class="item-card"><div class="name">${esc(x.name)}</div><p>${dimensions(x)} · ${dec(x.kg,0)} kg/ud.<br>${dec(vol(x.l,x.w,x.h),3)} m³/ud. · ${x.levels===1?'No recibe bultos':'Máx. '+x.levels+' niveles'} · ${x.rotate?'Giro 90° admitido':'Orientación fija'}<br>${x.stackable===false?'No recibe bultos':x.mixedAbove?'Admite mezcla encima':'Solo mismo material encima'} · ${x.maxTopKg==null?'Resistencia no verificada':'Máx. encima: '+dec(x.maxTopKg,1)+' kg'}</p><div class="actions"><button class="small" data-edit-m="${esc(x.id)}">Editar</button><button class="small danger" data-delete-m="${esc(x.id)}">Eliminar</button></div></article>`).join('')||'<div class="empty">No hay materiales.</div>'}</div></section>`;}
+function helpPage(){return `<div class="toolbar"><div><div class="kicker">GUÍA DE EMPLEO</div><h2>Criterios de cálculo y seguridad</h2></div></div><div class="help-columns"><section class="panel"><h3>1. Colocación 3D y obstáculos</h3><p>Dos cargas con idéntico volumen pueden encajar de forma distinta por sus dimensiones y por el orden de colocación. Esta herramienta sitúa prismas individuales en X/Y/Z sobre el suelo o sobre una única base inferior. Cada superficie puede recibir varios bultos sin voladizos ni intersecciones. La mezcla debe autorizarse en el bulto de apoyo.</p><p><b>Volumen de un bulto:</b> longitud × anchura × altura. Con centímetros, divide el producto entre 1.000.000 para obtener m³.</p></section><section class="panel"><h3>2. Reserva de seguridad / ineficiencia</h3><p>Como criterio inicial no normativo, usa <b>10 %</b> en cajas homogéneas, <b>15 %</b> en mezcla habitual y <b>20–25 %</b> en formas dispares.</p><p>La reserva del plan se traduce en una <b>franja de longitud libre</b> al fondo; no se resta un segundo porcentaje a los bultos. Los huecos geométricos aparecen automáticamente en el plano.</p></section><section class="panel"><h3>3. Resultado «no se encontró acomodo»</h3><p>El programa utiliza una búsqueda heurística de varias estrategias 3D, limitada a 500 bultos y un presupuesto de búsqueda. Si no consigue ubicar todas las piezas, <b>no demuestra que sea imposible</b>. Puede exigir estiba manual, distinta orientación, reorganización o otro vehículo.</p><p>El plano tampoco determina si es físicamente posible introducir cada bulto por un pasillo de carga ocupado.</p></section><section class="panel"><h3>4. Restricciones que debes verificar</h3><p>Además de tamaño y masa total: reparto de peso por ejes, resistencia del piso, amarre, estabilidad, centro de gravedad, restricciones para apilar, salientes de la caja, puerta/rampa, medios de elevación y orden de descarga.</p><p><b>Un encaje positivo NO equivale a autorización de transporte o estiba segura.</b></p></section><section class="panel"><h3>5. Vista 3D y corte por altura</h3><p>El croquis 3D muestra cada bulto individual colocado donde lo situó el algoritmo, con su altura real y apilado vertical. Puedes girarlo, ampliar y hacer un corte de altura para ver las capas inferiores.</p><p><b>Importante:</b> el modelo 3D representa directamente las coordenadas X/Y/Z calculadas, sin reagrupar cajas en columnas. Un resultado de no encaje sigue siendo no concluyente.</p></section><section class="panel"><h3>6. Datos y uso sin red</h3><p>Los catálogos y el plan actual se guardan en el almacenamiento local del navegador. Si se borra la información del navegador podrían perderse. En móviles, abrir un archivo HTML desde un visor o desde otra ruta puede impedir el guardado o crear un almacenamiento separado.</p><p>Exporta periódicamente a <code>.json</code> para copia y traslado entre equipos; el <code>.csv</code> resume el manifiesto. No usa servidores, mapas ni librerías externas. La versión HTML funciona desde un archivo, pero no es una aplicación nativa ni se sincroniza sola entre móviles y ordenadores.</p></section><section class="panel"><h3>7. Cómo comenzar</h3><p>Registra las medidas reales del vehículo, mide cada bulto embalado, declara su masa y número máximo de niveles, selecciona el vehículo y añade cantidades. Ajusta la reserva y consulta el plano y las advertencias. Los registros marcados EJEMPLO son ficticios.</p></section><section class="panel"><h3>8. Configuraciones y convoy</h3><p>En Vehículos, edita un modelo y registra obstáculos en la configuración elegida. En el plan selecciona Individual o Convoy, añade la flota y calcula. Selecciona una unidad para ver sus croquis y redistribuir sus bultos. Exporta JSON para conservar el plan y CSV para consultar el manifiesto.</p></section></div>`;}
 
 // --- Renderizado tridimensional local sobre Canvas 2D: no utiliza red ni WebGL ---
 const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
@@ -263,7 +452,7 @@ function v3Poly(ctx,pts,fill,stroke='#fff',line=1){if(!pts.length)return;ctx.beg
 function v3Line(ctx,a,b,color='#9baeba',weight=1,dash=[]){ctx.beginPath();ctx.setLineDash(dash);ctx.moveTo(a.sx,a.sy);ctx.lineTo(b.sx,b.sy);ctx.strokeStyle=color;ctx.lineWidth=weight;ctx.stroke();ctx.setLineDash([])}
 function pointInside(poly,x,y){let inside=false;for(let i=0,j=poly.length-1;i<poly.length;j=i++){const a=poly[i],b=poly[j];if((a.sy>y)!==(b.sy>y)&&x<(b.sx-a.sx)*(y-a.sy)/(b.sy-a.sy)+a.sx)inside=!inside}return inside;}
 function make3DUnits(c){return {items:(c.placed||[]).map(p=>({...p,column:p.key,number:1,simplified:false})),simple:false};}
-function draw3D(c){const cv=$('#load3d');if(!cv||!c?.v)return;const v=c.v,ctx=cv.getContext('2d');if(!ctx)return;const cssW=Math.max(100,cv.clientWidth),cssH=Math.max(100,cv.clientHeight);const dpr=Math.min(2,window.devicePixelRatio||1);cv.width=Math.round(cssW*dpr);cv.height=Math.round(cssH*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,cssW,cssH);const cam=v3Cam();const center=[v.w/2,v.l/2,v.h/2];const raw=p=>[v3Dot(p.map((val,i)=>val-center[i]),cam.right),v3Dot(p.map((val,i)=>val-center[i]),cam.up),v3Dot(p.map((val,i)=>val-center[i]),cam.toward)];const corners=v3Points(0,0,0,v.w,v.l,v.h).map(raw);const minx=Math.min(...corners.map(p=>p[0])),maxx=Math.max(...corners.map(p=>p[0])),miny=Math.min(...corners.map(p=>p[1])),maxy=Math.max(...corners.map(p=>p[1]));const padding=cssW<550?25:48;const scale=Math.min((cssW-2*padding)/Math.max(1,maxx-minx),(cssH-2*padding)/Math.max(1,maxy-miny))*view3d.zoom;const cx=cssW/2-(minx+maxx)/2*scale,cy=cssH/2+(miny+maxy)/2*scale;const P=p=>{const r=raw(p);return {sx:cx+r[0]*scale,sy:cy-r[1]*scale,d:r[2]}};const frame=v3Points(0,0,0,v.w,v.l,v.h).map(P);
+function draw3D(c){const cv=$('#load3d');if(!cv||!c?.v)return;const v=c.v,ctx=cv.getContext('2d');if(!ctx)return;const cssW=Math.max(100,cv.clientWidth),cssH=Math.max(100,cv.clientHeight);const dpr=Math.min(2,window.devicePixelRatio||1);cv.width=Math.round(cssW*dpr);cv.height=Math.round(cssH*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,cssW,cssH);const cam=v3Cam();const center=[v.w/2,v.l/2,v.h/2];const raw=p=>[v3Dot(p.map((val,i)=>val-center[i]),cam.right),v3Dot(p.map((val,i)=>val-center[i]),cam.up),v3Dot(p.map((val,i)=>val-center[i]),cam.toward)];const tray=pendingTray(c);const corners=v3Points(0,0,0,tray?.right??v.w,tray?.length??v.l,tray?.height??v.h).map(raw);const minx=Math.min(...corners.map(p=>p[0])),maxx=Math.max(...corners.map(p=>p[0])),miny=Math.min(...corners.map(p=>p[1])),maxy=Math.max(...corners.map(p=>p[1]));const padding=cssW<550?25:48;const scale=Math.min((cssW-2*padding)/Math.max(1,maxx-minx),(cssH-2*padding)/Math.max(1,maxy-miny))*view3d.zoom;const cx=cssW/2-(minx+maxx)/2*scale,cy=cssH/2+(miny+maxy)/2*scale;const P=p=>{const r=raw(p);return {sx:cx+r[0]*scale,sy:cy-r[1]*scale,d:r[2]}};const frame=v3Points(0,0,0,v.w,v.l,v.h).map(P);
 // Suelo, cuadrícula y franja reservada (de 0 a largo utilizable).
 v3Poly(ctx,[frame[0],frame[1],frame[2],frame[3]],'#f1f6f8','#b5c8d4',1.3);
 const step= v.w>700||v.l>1500?100:50;
@@ -272,8 +461,9 @@ for(let y=step;y<v.l;y+=step)v3Line(ctx,P([0,y,0]),P([v.w,y,0]),'#dbe5ec',.75);
 if(c.usableL<v.l-.001){const a=c.usableL;v3Poly(ctx,[P([0,a,0]),P([v.w,a,0]),P([v.w,v.l,0]),P([0,v.l,0])],'rgba(141,164,184,.25)',null);v3Line(ctx,P([0,a,0]),P([v.w,a,0]),'#a1663a',2,[7,5]);}
 // Jaula del vehículo (aristas superiores y verticales, al fondo de la carga).
 for(const [a,b] of [[0,4],[1,5],[2,6],[3,7],[4,5],[5,6],[6,7],[7,4]])v3Line(ctx,frame[a],frame[b],'rgba(89,115,136,.35)',1.25,[5,4]);
-const {items,simple}=make3DUnits(c);const faces=[];let drawn=0;const cut=clamp(view3d.cut??v.h,0,v.h);
-for(const item of items){if(item.z>=cut-1e-4)continue;const top=Math.min(item.z+item.h,cut),h=top-item.z;if(h<=0)continue;drawn++;const corners3=v3Points(item.x,item.y,item.z,item.w,item.l,h);for(const face of FACESET){if(v3Dot(face.normal,cam.toward)<=.001)continue;const pts=face.inds.map(i=>P(corners3[i]));const depth=pts.reduce((t,p)=>t+p.d,0)/pts.length;const highlight=view3d.selected?.column===item.column,ghost=view3d.focus&&item.id!==view3d.focus;const alpha=ghost?.16:1;faces.push({pts,depth,fill:tint(item.color,face.light,alpha),stroke:highlight?'#113a4e':ghost?'rgba(255,255,255,.07)':'rgba(255,255,255,.66)',weight:highlight?2.3:.75,item});}}
+if(tray){const pts=v3Points(tray.x,0,0,tray.right-tray.x,tray.length,0).map(P);v3Poly(ctx,pts.slice(0,4),'#fff3e2','#a76928',1.5);}
+const {items,simple}=make3DUnits(c);items.push(...(c.v.obstacles||[]).map(o=>({...o,color:'#a26d55',obstacle:true,column:'obstacle:'+o.id})),...(tray?.items||[]));const faces=[];let drawn=0;const cut=clamp(view3d.cut??v.h,0,v.h);
+for(const item of items){if(!item.pending&&item.z>=cut-1e-4)continue;const top=item.pending?item.h:Math.min(item.z+item.h,cut),h=top-item.z;if(h<=0)continue;drawn++;const corners3=v3Points(item.x,item.y,item.z,item.w,item.l,h);for(const face of FACESET){if(v3Dot(face.normal,cam.toward)<=.001)continue;const pts=face.inds.map(i=>P(corners3[i]));const depth=pts.reduce((t,p)=>t+p.d,0)/pts.length;const highlight=view3d.selected?.column===item.column,ghost=!item.pending&&!item.obstacle&&view3d.focus&&item.id!==view3d.focus;const alpha=ghost?.16:1;faces.push({pts,depth,fill:tint(item.color,face.light,alpha),stroke:highlight?'#113a4e':ghost?'rgba(255,255,255,.07)':'rgba(255,255,255,.66)',weight:highlight?2.3:.75,item});}}
 faces.sort((a,b)=>a.depth-b.depth);
 view3d.hit=[];
 for(const face of faces){v3Poly(ctx,face.pts,face.fill,face.stroke,face.weight);view3d.hit.push({polygon:face.pts,item:face.item});}
@@ -284,10 +474,15 @@ for(const [a,b] of [[0,1],[1,2],[2,3],[3,0]])v3Line(ctx,frame[a],frame[b],'rgba(
 for(const [a,b] of [[0,4],[1,5],[2,6],[3,7],[4,5],[5,6],[6,7],[7,4]])v3Line(ctx,frame[a],frame[b],'rgba(73,106,133,.55)',1.25,[5,4]);
 ctx.font='700 11px system-ui, sans-serif';ctx.textAlign='center';ctx.lineWidth=3;ctx.strokeStyle='rgba(255,255,255,.9)';ctx.fillStyle='#3d6378';const label=(s,p)=>{ctx.strokeText(s,p.sx,p.sy);ctx.fillText(s,p.sx,p.sy)};
 if(view3d.zoom>.65){let fp=P([v.w/2,0,0]);label('FRENTE', {sx:fp.sx,sy:Math.min(cssH-9,fp.sy+18)});let bp=P([v.w/2,v.l,0]);label('FONDO',{sx:bp.sx,sy:Math.min(cssH-9,bp.sy+18)});}
+if(tray){
+ const tag=P([tray.x+(tray.right-tray.x)/2,tray.length,0]);
+ label('PENDIENTES · '+tray.items.length+' bultos', {sx:tag.sx,sy:Math.min(cssH-9,tag.sy+13)});
+ for(const item of tray.items){const p=P([item.x+item.w/2,item.y+item.l/2,item.h]);label(item.number+" · "+item.unit+"/"+item.qty,p);}
+}
 if(cut<v.h-.01){ctx.textAlign='right';ctx.fillStyle='#8b581f';ctx.font='700 12px system-ui, sans-serif';ctx.fillText('CORTE: '+int(cut)+' cm',cssW-12,cssH-12);}
 view3d.scene={P,scale,drawn,simple};
 }
-function v3Selection(p){if(!p){view3d.selected=null;v3Message('Selecciona un bulto del croquis para ver medidas y posición.');draw3D(lastCalc);return;}view3d.selected=p;v3Message(`${p.name} · ${p.simplified?p.number+' unidades apiladas':'Nivel '+p.level} · Base ${int(p.w)} × ${int(p.l)} cm · Altura ${int(p.h)} cm · Masa ${dec(p.kg,1)} kg · Carga encima ${dec(p.topKg,1)} kg · Posición x=${int(p.x)} cm, fondo=${int(p.y)} cm, base a ${int(p.z)} cm.`);draw3D(lastCalc);}
+function v3Selection(p){if(!p){view3d.selected=null;v3Message('Selecciona un bulto del croquis para ver medidas y posición.');draw3D(lastCalc);return;}view3d.selected=p;if(p.obstacle){v3Message(`Obstáculo: ${p.name} · ${dimensions(p)} · X ${p.y}, Y ${p.x}, Z ${p.z} cm`);draw3D(lastCalc);return;}if(p.pending){v3Message(p.name+' · Bulto '+p.unit+' de '+p.qty+' pendientes · '+dimensions(p)+' · '+dec(p.kg,1)+' kg · Fuera del vehículo.');draw3D(lastCalc);return;}v3Message(`${p.name} · ${p.simplified?p.number+' unidades apiladas':'Nivel '+p.level} · Base ${int(p.w)} × ${int(p.l)} cm · Altura ${int(p.h)} cm · Masa ${dec(p.kg,1)} kg · Carga encima ${dec(p.topKg,1)} kg · Posición X=${dec(p.y,1)}, Y=${dec(p.x,1)}, Z=${dec(p.z,1)} cm.`);draw3D(lastCalc);}
 function v3Hover(x,y){for(let i=view3d.hit.length-1;i>=0;i--){const hit=view3d.hit[i];if(pointInside(hit.polygon,x,y))return hit.item;}return null;}
 function mount3D(c){const canvas=$('#load3d');if(!canvas)return;if(!c?.v){const box=canvas.parentElement;box.innerHTML='<div class="empty">Selecciona un vehículo para activar el croquis 3D.</div>';return;}if(view3d.vehicleId!==c.v.id){view3d.cut=c.v.h;view3d.vehicleId=c.v.id;view3d.selected=null;view3d.zoom=1;}view3d.cut=clamp(view3d.cut,0,c.v.h);const cutSlider=$('#threeCut'),cutLabel=$('#cutValue');if(cutSlider){cutSlider.max=c.v.h;cutSlider.value=view3d.cut;}if(cutLabel)cutLabel.textContent=int(view3d.cut)+' cm';const focus=$('#threeFocus');if(focus){if(!c.details?.some(m=>m.id===view3d.focus))view3d.focus='';focus.value=view3d.focus;}
 let drag=false,start={x:0,y:0},last={x:0,y:0},moved=false;
@@ -324,18 +519,543 @@ if(view3d.scene?.simple)v3Message('Representación simplificada: las columnas co
 }
 function v3Preset(which){const presets={"3d-iso":[.65,.55],"3d-front":[0,.12],"3d-side":[Math.PI/2,.12],"3d-top":[.65,1.56],"3d-reset":[.65,.55]};if(!presets[which])return;[view3d.az,view3d.el]=presets[which];if(which==='3d-reset'){view3d.zoom=1;view3d.cut=lastCalc?.v?.h??0;view3d.focus='';view3d.selected=null;const f=$('#threeFocus');if(f)f.value='';const s=$('#threeCut');if(s)s.value=view3d.cut;const l=$('#cutValue');if(l)l.textContent=int(view3d.cut)+' cm';v3Message('Vista restablecida; selecciona un bulto para ver sus dimensiones.')}document.querySelectorAll('.scene-controls [data-action]').forEach(el=>el.classList.toggle('active-view',el.dataset.action===which));draw3D(lastCalc);}
 
-function render(){document.body.classList.remove('viewer-open');const tabs=[...document.querySelectorAll('#tabs [data-tab]')];tabs.forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));$('#app').innerHTML=(notification?`<div class="callout no-print" style="margin-bottom:12px">${esc(notification)} <button class="small" data-action="dismiss">Cerrar</button></div>`:'')+({plan:planPage,vehicles:vehiclesPage,materials:materialsPage,help:helpPage}[tab]());if(tab==='plan')mount3D(lastCalc);}
+let obstacleEdit=null;
+
+function configPicker(v,id){
+ if(!v)return '';
+ const configs=v.configurations||[defaultConfig()];
+ return `<div class="field field26"><label for="${id}">Configuración interior</label><select id="${id}">${configs.map(c=>`<option value="${esc(c.id)}" ${c.id===v.configId?'selected':''}>${esc(c.name)}</option>`).join('')}</select></div>`;
+}
+
+function obstacleLegend(v){
+ if(!v?.obstacles?.length)return '';
+ return `<div class="scene-legend26"><b>Obstáculos · ${esc(v.configurationName)}</b><ul>${v.obstacles.map(o=>`<li>${esc(o.name)} · ${dimensions(o)} · X ${o.y}, Y ${o.x}, Z ${o.z} cm</li>`).join('')}</ul></div>`;
+}
+
+function obstacleEditor(v){
+ const configs=v.configurations||[defaultConfig()];
+ const c=configs.find(c=>c.id===v.configId)||configs[0];
+ const editing=obstacleEdit?.v===v.id&&obstacleEdit?.c===c.id?c.obstacles.find(o=>o.id===obstacleEdit.o):null;
+ const fields=[['X','X longitudinal'],['Y','Y transversal'],['Z','Z desde el suelo'],['l','Longitud'],['w','Anchura'],['h','Altura']];
+ return `<section class="panel formcard section-space" id="obstacle-editor"><h2>Obstáculos interiores</h2><p class="help">Origen en la esquina delantera izquierda del suelo, mirando hacia la cabina desde la parte trasera. X hacia atrás, Y hacia la derecha y Z hacia arriba. Todas las medidas en cm.</p>
+ ${configPicker({...v,configId:c.id},'edit-config')}
+ <form id="config-form" class="form26"><div class="field"><label for="config-name">Nombre de la configuración</label><input id="config-name" name="name" value="${esc(c.name)}" required maxlength="100"></div><div class="tools"><button name="operation" value="rename">Renombrar</button><button name="operation" value="add">Nueva configuración vacía</button><button type="button" class="danger" data-v26="delete-config" ${configs.length<2?'disabled':''}>Eliminar configuración</button></div></form>
+ <div class="list26">${c.obstacles.map(o=>`<div class="card26"><b>${esc(o.name)}</b> · ${o.active?'Activo':'Desactivado'}<div class="help">${dimensions(o)} · X ${o.X}, Y ${o.Y}, Z ${o.Z} cm</div><div class="tools"><button data-v26="edit-obstacle" data-oid="${esc(o.id)}">Editar</button><button data-v26="toggle-obstacle" data-oid="${esc(o.id)}">${o.active?'Desactivar':'Activar'}</button><button class="danger" data-v26="delete-obstacle" data-oid="${esc(o.id)}">Quitar</button></div></div>`).join('')}</div>
+ <form id="obstacle-form" class="formgrid"><div class="field full"><label for="obs-name">Nombre del obstáculo</label><input id="obs-name" name="name" value="${esc(editing?.name||'')}" maxlength="120" required></div>
+ ${fields.map(([key,label])=>`<div class="field"><label for="obs-${key}">${label} (cm)</label><input id="obs-${key}" type="number" inputmode="decimal" step="any" min="0" name="${key}" value="${editing?.[key]??('XYZ'.includes(key)?0:'')}" required></div>`).join('')}
+ <div class="field full"><label class="checkboxline"><input name="active" type="checkbox" ${editing?.active===false?'':'checked'}>Activo</label></div>
+ <div class="field full tools"><button class="primary">${editing?'Guardar obstáculo':'Añadir obstáculo'}</button>${editing?'<button type="button" data-v26="cancel-obstacle">Cancelar</button>':''}</div></form></section>`;
+}
+
+function updateConfigs(change){
+ const index=data.vehicles.findIndex(v=>v.id===editV);
+ if(index<0)return;
+ const updated=JSON.parse(JSON.stringify(data.vehicles[index]));
+ normalizeConfigs(updated);
+ const c=updated.configurations.find(c=>c.id===updated.configId);
+ try{change(updated,c);normalizeConfigs(updated);}
+ catch(err){alert(err.message);return false;}
+ data.vehicles[index]=updated;save();render();return true;
+}
+
+document.addEventListener('change',e=>{
+ if(e.target.id==='individual-config'){
+  const v=data.vehicles.find(v=>v.id===data.selectedVehicleId);
+  v.configId=e.target.value;save();render();
+ }
+ if(e.target.id==='edit-config'){obstacleEdit=null;updateConfigs(v=>{v.configId=e.target.value;});}
+});
+
+document.addEventListener('submit',e=>{
+ if(!['config-form','obstacle-form'].includes(e.target.id))return;
+ e.preventDefault();
+ const form=new FormData(e.target);
+ if(e.target.id==='config-form'){
+  const name=String(form.get('name')).trim();
+  if(!name)return alert('Escribe un nombre.');
+  updateConfigs((v,c)=>{
+   if(e.submitter?.value==='add'){
+    const next={id:uid(),name,obstacles:[]};v.configurations.push(next);v.configId=next.id;
+   }else c.name=name;
+  });
+  return;
+ }
+ const v=data.vehicles.find(v=>v.id===editV);
+ const id=obstacleEdit?.v===v.id&&obstacleEdit.c===v.configId?obstacleEdit.o:uid();
+ const draft={id,name:String(form.get('name')),active:form.has('active')};
+ for(const key of ['X','Y','Z','l','w','h'])draft[key]=form.get(key);
+ if(updateConfigs((_,c)=>{
+  const i=c.obstacles.findIndex(o=>o.id===id);
+  if(i<0)c.obstacles.push(draft);else c.obstacles[i]=draft;
+ })){obstacleEdit=null;render();}
+});
+
+document.addEventListener('click',e=>{
+ const button=e.target.closest('[data-v26]');
+ if(!button)return;
+ const action=button.dataset.v26,oid=button.dataset.oid;
+ if(action==='edit-obstacle'){
+  const v=data.vehicles.find(v=>v.id===editV);
+  obstacleEdit={v:v.id,c:v.configId,o:oid};render();$('#obstacle-form').scrollIntoView({block:'nearest'});return;
+ }
+ if(action==='cancel-obstacle'){obstacleEdit=null;render();return;}
+ if(action==='toggle-obstacle')updateConfigs((_,c)=>{const o=c.obstacles.find(o=>o.id===oid);o.active=!o.active;});
+ if(action==='delete-obstacle')updateConfigs((_,c)=>{c.obstacles=c.obstacles.filter(o=>o.id!==oid);});
+ if(action==='delete-config'&&confirm('¿Eliminar esta configuración interior?'))
+  updateConfigs((v,c)=>{if(v.configurations.length>1)v.configurations=v.configurations.filter(x=>x.id!==c.id);});
+});
+
+let convoyResult=null,convoyBusy=false,activeInstance='';
+
+function normalizeConvoy(obj,vehicles,materials,plan){
+ const source=obj.convoy||{};
+ const fleet=[],seen=new Set();
+ let units=0;
+ for(const row of Array.isArray(source.fleet)?source.fleet:[]){
+  const v=vehicles.find(v=>v.id===row?.vehicleId);
+  if(!v||units>=30)continue;
+  const id=String(row.id||uid());
+  if(seen.has(id))throw Error('Identificador de flota duplicado.');
+  seen.add(id);
+  const qty=Math.min(30-units,Math.max(1,Math.floor(Number(row.qty)||1)));
+  const configId=v.configurations.find(c=>c.id===row.configId)?.id||v.configId;
+  fleet.push({id,vehicleId:v.id,configId,qty});units+=qty;
+ }
+ const valid=new Set(fleet.flatMap(row=>Array.from({length:row.qty},(_,i)=>instanceId(row,i))));
+ const locks=(Array.isArray(source.locks)?source.locks:[]).filter(l=>l&&valid.has(l.instanceId)&&materials.some(m=>m.id===l.id)&&plan.some(p=>p.id===l.id))
+  .map(l=>({instanceId:l.instanceId,id:l.id,qty:Math.min(1000,Math.max(1,Math.floor(Number(l.qty)||1)))}));
+ return {mode:obj.mode==='convoy'?'convoy':'individual',convoy:{fleet,locks,assignments:source.assignments||null}};
+}
+
+function instanceId(row,i){return row.id+':'+(i+1);}
+
+function fleetInstances(){
+ const instances=[],counts=new Map();
+ for(const row of data.convoy.fleet){
+  const source=data.vehicles.find(v=>v.id===row.vehicleId);
+  if(!source)continue;
+  for(let i=0;i<row.qty;i++){
+   const number=(counts.get(source.id)||0)+1;
+   counts.set(source.id,number);
+   instances.push({...configuredVehicle(source,row.configId),id:instanceId(row,i),name:source.name+' · '+number,modelId:source.id});
+  }
+ }
+ return instances;
+}
+
+function manifestSummary(){
+ const quantities=new Map();
+ for(const p of data.plan)quantities.set(p.id,(quantities.get(p.id)||0)+p.qty);
+ const details=[...quantities].map(([id,qty])=>{
+  const m=material(id);
+  return {...m,qty,volume:vol(m.l,m.w,m.h)*qty,totalKg:m.kg*qty,color:PALETTE[data.materials.indexOf(m)%PALETTE.length]};
+ });
+ return {details,pieces:details.reduce((a,m)=>a+m.qty,0),totalKg:details.reduce((a,m)=>a+m.totalKg,0),totalVol:details.reduce((a,m)=>a+m.volume,0)};
+}
+
+function convoySignature(){
+ return JSON.stringify([fleetInstances(),manifestSummary().details,data.reservePct,data.convoy.locks]);
+}
+
+function buildUnits(details,prefix=''){
+ return details.flatMap(m=>Array.from({length:m.qty},(_,i)=>({...m,key:prefix+m.id+':'+i})));
+}
+
+function countsByMaterial(boxes){
+ const counts=new Map();
+ for(const b of boxes)counts.set(b.id,(counts.get(b.id)||0)+1);
+ return counts;
+}
+
+function coversLocks(boxes,locked){
+ const keys=new Set(boxes.map(b=>b.key));
+ return locked.every(box=>keys.has(box.key));
+}
+
+function countBound(values,capacity){
+ let count=0,sum=0;
+ for(const value of values.sort((a,b)=>a-b)){
+  sum+=value;
+  if(sum>capacity)break;
+  count++;
+ }
+ return count;
+}
+
+async function packVehicle(v,units,reserve,required,budget,rarity=false){
+ const {usableL}=operatingSpace(v,reserve);
+ const eligible=units.filter(m=>!geometryFailure(m,v,reserve)&&passesDoor(m,v));
+ let best=[];
+ if(!eligible.length||required.some(m=>!eligible.includes(m)))return best;
+ const maxCount=Math.min(countBound(eligible.map(m=>m.kg),v.payload+EPS),
+  countBound(eligible.map(m=>vol(m.l,m.w,m.h)),operatingSpace(v,reserve).Vu+1e-9));
+ const keys=new Set(required.map(m=>m.key));
+ const items=eligible.map(m=>({...m,priority:(keys.has(m.key)?1000:0)+(rarity?(m.priority||0):0)}));
+ for(let mode=0;mode<12&&!searchExpired(budget);mode++){
+  await new Promise(resolve=>setTimeout(resolve,0));
+  if(searchExpired(budget))break;
+  const r=pack3D(items,v,usableL,mode,budget);
+  if(r.placed.length>best.length&&coversLocks(r.placed,required)&&!validatePlacement(r.placed,v,usableL).length)best=r.placed;
+  if(best.length===maxCount)break;
+ }
+ return best;
+}
+
+function convoyScore(entries,reserve){
+ const used=entries.filter(e=>e.placed.length);
+ const boxes=used.flatMap(e=>e.placed);
+ const space=used.reduce((sum,e)=>sum+operatingSpace(e.v,reserve).Vu,0);
+ return [boxes.length,-used.length,ratio(boxes.reduce((sum,p)=>sum+vol(p.l,p.w,p.h),0),space)];
+}
+
+function betterScore(a,b){
+ for(let i=0;i<a.length;i++){if(a[i]>b[i]+1e-9)return true;if(a[i]<b[i]-1e-9)return false;}
+ return false;
+}
+
+async function solveConvoy(instances,details,locks,reserve){
+ const start=performance.now(),units=buildUnits(details);
+ const locked=new Map(instances.map(v=>[v.id,[]]));
+ let pool=[...units];
+ for(const l of locks){
+  const slot=locked.get(l.instanceId);
+  if(!slot)throw Error('Un vehículo con asignaciones bloqueadas ya no está disponible.');
+  const matches=pool.filter(m=>m.id===l.id).slice(0,l.qty);
+  if(matches.length!==l.qty)throw Error('El manifiesto contiene menos unidades de las bloqueadas. Revisa los bloqueos.');
+  slot.push(...matches);
+  const keys=new Set(matches.map(m=>m.key));pool=pool.filter(m=>!keys.has(m.key));
+ }
+ const space=v=>operatingSpace(v,reserve).Vu;
+ const eligibility=m=>instances.filter(v=>!geometryFailure(m,v,reserve)&&passesDoor(m,v)).length;
+ pool=pool.map(m=>({...m,priority:instances.length-eligibility(m)}));
+ const largest=[...instances].sort((a,b)=>space(b)-space(a));
+ const heavy=[...instances].sort((a,b)=>b.payload-a.payload);
+ const small=[...largest].reverse();
+ const options=new Map(instances.map(v=>[v.id,pool.filter(m=>!geometryFailure(m,v,reserve)&&passesDoor(m,v)).length]));
+ const constrained=[...instances].sort((a,b)=>options.get(a.id)-options.get(b.id));
+ const orders=[largest,constrained,heavy,small,instances,largest];
+ let best=null,score=[-1,0,0];
+ const budget={left:1200000,deadline:start+1700};
+ for(let attempt=0;attempt<orders.length&&!searchExpired(budget);attempt++){
+  let remaining=[...pool],valid=true;
+  const entries=[];
+  for(const v of orders[attempt]){
+   const required=locked.get(v.id);
+   if(!remaining.length&&!required.length){entries.push({v,placed:[]});continue;}
+   let placed=await packVehicle(v,[...required,...remaining],reserve,required,budget,attempt%2===1);
+   if(!coversLocks(placed,required)&&!searchExpired(budget))
+    placed=await packVehicle(v,required,reserve,required,budget);
+   if(!coversLocks(placed,required)){valid=false;break;}
+   entries.push({v,placed});
+   const assigned=new Set(placed.map(m=>m.key));
+   remaining=remaining.filter(m=>!assigned.has(m.key));
+  }
+  if(!valid)continue;
+  const candidate=convoyScore(entries,reserve);
+  if(betterScore(candidate,score)){best=entries;score=candidate;}
+  if(score[0]===units.length&&score[1]===-1)break;
+ }
+ if(!best)throw Error('La búsqueda no ha podido conservar todos los bloqueos. Revisa sus cantidades, la configuración y la reserva.');
+ const placements=instances.map(v=>({instanceId:v.id,placed:best.find(e=>e.v.id===v.id)?.placed||[]}));
+ return {placements,limited:searchExpired(budget),ms:performance.now()-start};
+}
+
+function validateConvoySnapshot(snapshot){
+ if(!snapshot||snapshot.signature!==convoySignature()||!Array.isArray(snapshot.placements))return null;
+ const instances=fleetInstances(),summary=manifestSummary();
+ if(summary.pieces>500||snapshot.placements.length!==instances.length)return null;
+ const total=new Map(summary.details.map(m=>[m.id,m.qty]));
+ const entries=[];
+ for(const v of instances){
+  const saved=snapshot.placements.find(x=>x.instanceId===v.id);
+  if(!Array.isArray(saved?.placed)||saved.placed.length>summary.pieces)return null;
+  const placed=[];
+  for(const p of saved.placed){
+   const m=summary.details.find(m=>m.id===p?.id);
+   if(!m||!passesDoor(m,v)||!(total.get(m.id)>0))return null;
+   const o=orientations(m).find(o=>o.rotated===p.rotated);
+   if(!o||o.w!==p.w||o.l!==p.l||p.h!==m.h||p.kg!==m.kg||!Number.isFinite(p.topKg))return null;
+   placed.push({...m,...o,x:p.x,y:p.y,z:p.z,parent:p.parent,topKg:p.topKg,key:v.id+':'+placed.length,level:p.parent===null?1:(placed[p.parent]?.level||0)+1,units:1});
+   total.set(m.id,total.get(m.id)-1);
+  }
+  const space=operatingSpace(v,data.reservePct);
+  if(validatePlacement(placed,v,space.usableL).length)return null;
+  const counts=countsByMaterial(placed);
+  for(const lock of data.convoy.locks.filter(l=>l.instanceId===v.id)){
+   const qty=(counts.get(lock.id)||0)-lock.qty;
+   if(qty<0)return null;
+   counts.set(lock.id,qty);
+  }
+  entries.push({v,placed,...space});
+ }
+ const placed=entries.flatMap(e=>e.placed);
+ const totals=loadTotals(summary.details,placed,m=>pendingReason(m,instances,data.reservePct));
+ return {...snapshot,...summary,...totals,loaded:placed.length,entries};
+}
+
+function restoreConvoy(){
+ try{convoyResult=validateConvoySnapshot(data.convoy.assignments);}
+ catch(e){convoyResult=null;}
+ if(!convoyResult)data.convoy.assignments=null;
+}
+
+function storeConvoy(result){
+ const snapshot={...result,signature:convoySignature()};
+ const checked=validateConvoySnapshot(snapshot);
+ if(!checked)throw Error('La propuesta no ha superado la comprobación de integridad.');
+ data.convoy.assignments=snapshot;convoyResult=checked;save();
+}
+
+function exportData(){
+ return {...data,convoy:{...data.convoy,assignments:convoyResult?.signature===convoySignature()?data.convoy.assignments:null},schemaVersion:'2.6',exportedAt:new Date().toISOString()};
+}
+
+function modeSwitcher(){
+ return `<div class="mode26 no-print" aria-label="Modo de planificación"><button data-v26="mode" data-mode="individual" aria-pressed="${data.mode==='individual'}">Individual</button><button data-v26="mode" data-mode="convoy" aria-pressed="${data.mode==='convoy'}">Convoy</button></div>`;
+}
+
+function fleetControls(){
+ const rows=data.convoy.fleet.filter(r=>data.vehicles.some(v=>v.id===r.vehicleId));
+ return `<p class="help">Añade un modelo y su configuración. Puedes añadir el mismo modelo en varias filas para usar configuraciones distintas.</p>
+ <form id="fleet-form" class="form26"><div class="field"><label for="fleet-model">Modelo disponible</label><select id="fleet-model" name="model" required>${data.vehicles.map(v=>`<option value="${esc(v.id)}">${esc(v.name)}</option>`).join('')}</select></div>
+ <div class="field"><label for="fleet-qty">Unidades</label><input id="fleet-qty" name="qty" type="number" min="1" max="30" value="1" required></div><button ${data.vehicles.length?'':'disabled'}>Añadir a la flota</button></form>
+ <div class="list26">${rows.map(r=>{
+  const v=data.vehicles.find(v=>v.id===r.vehicleId);
+  return `<div class="card26"><b>${esc(v.name)}</b><div class="formgrid field26">
+  <div class="field"><label for="qty-${esc(r.id)}">Unidades</label><input id="qty-${esc(r.id)}" data-fleet-qty="${esc(r.id)}" type="number" min="1" max="30" value="${r.qty}"></div>
+  <div class="field"><label for="conf-${esc(r.id)}">Configuración</label><select id="conf-${esc(r.id)}" data-fleet-config="${esc(r.id)}">${v.configurations.map(c=>`<option value="${esc(c.id)}" ${c.id===(v.configurations.some(c=>c.id===r.configId)?r.configId:v.configId)?'selected':''}>${esc(c.name)}</option>`).join('')}</select></div></div>
+  <div class="tools"><button class="small danger" data-v26="remove-fleet" data-row="${esc(r.id)}">Retirar modelo</button></div></div>`;
+ }).join('')}</div><button class="primary" data-v26="calculate-convoy" ${convoyBusy?'disabled':''}>${convoyBusy?'Calculando…':'Calcular convoy'}</button><p class="help">Hasta 30 vehículos y 500 bultos por cálculo.</p>`;
+}
+
+function selectedConvoyView(){
+ const r=convoyResult;
+ const entries=r?.entries||[];
+ const e=entries.find(e=>e.v.id===activeInstance)||entries.find(e=>e.placed.length)||entries[0];
+ if(!e)return {v:null,headline:'Calcula el convoy para ver su distribución.',notes:[]};
+ activeInstance=e.v.id;
+ const counts=countsByMaterial(e.placed);
+ const details=r.details.filter(m=>counts.has(m.id)).map(m=>{
+  const qty=counts.get(m.id);
+  return {...m,qty,volume:vol(m.l,m.w,m.h)*qty,totalKg:m.kg*qty};
+ });
+ const totals=loadTotals(details,e.placed);
+ const placedArea=e.placed.filter(p=>p.parent===null).reduce((a,p)=>a+area(p.l,p.w),0);
+ return {...e,...totals,details,byColor:Object.fromEntries(details.map(m=>[m.id,m.color])),
+  placedArea,minArea:placedArea,pieces:e.placed.length,loaded:e.placed.length,totalKg:totals.placedKg,totalVol:totals.placedVol,
+  state:e.placed.length?'green':'neutral',headline:e.placed.length?'Distribución del vehículo comprobada':'Vehículo sin carga asignada',
+  notes:[`Configuración interior ${e.v.configurationName}.`,
+   ...(e.placed.some(p=>p.topKg>0&&p.maxTopKg==null)?['Hay apoyos con masa encima y resistencia superior sin registrar.']:[])],
+  scenePending:r.pending};
+}
+
+function convoyScenePicker(){
+ return `<div class="field no-print field26"><label for="scene-vehicle">Vehículo del croquis</label><select id="scene-vehicle">${convoyResult.entries.map(e=>`<option value="${esc(e.v.id)}" ${e.v.id===activeInstance?'selected':''}>${esc(e.v.name)} · ${e.placed.length} bultos</option>`).join('')}</select></div>`;
+}
+
+function vehicleManifest(c){
+ if(!c.v)return '';
+ return `<h3 class="field26">Asignación · ${esc(c.v.name)}</h3>${c.details.length?responsiveTable(['Material','Unidades','Masa'],c.details.map(m=>[esc(m.name),int(m.qty),dec(m.totalKg,1)+' kg'])):'<p class="help">Sin material asignado.</p>'}`;
+}
+
+function convoyResults(){
+ const r=convoyResult,instances=fleetInstances();
+ if(!r)return `<section class="panel"><h2>Convoy</h2><p class="help">${instances.length} vehículos seleccionados. ${convoyBusy?'Calculando la distribución…':'Configura la flota y pulsa «Calcular convoy» para obtener la propuesta.'}</p>${data.convoy.locks.length?`<div class="list26">${lockControls(instances)}</div>`: ''}</section>`;
+ const used=r.entries.filter(e=>e.placed.length).length;
+ const complete=r.pendingCount===0;
+ const fleetKg=r.entries.reduce((a,e)=>a+e.v.payload,0);
+ const fleetVol=r.entries.reduce((a,e)=>a+e.Vu,0);
+ const outsideFleet=r.totalKg>fleetKg+EPS||r.totalVol>fleetVol+1e-9;
+ const individualFailure=r.pending.some(m=>r.entries.every(e=>geometryFailure(m,e.v,data.reservePct)));
+ const proven=outsideFleet||individualFailure;
+ const headline=complete?'Carga asignada al convoy':proven?'Incompatibilidad demostrada para el manifiesto completo':'Asignación parcial del convoy';
+ const detail=complete?'Encaje geométrico y masa total comprobados.':proven?
+  [r.totalKg>fleetKg+EPS?'La masa solicitada supera la suma de las cargas útiles.':'',r.totalVol>fleetVol+1e-9?'El volumen solicitado supera el volumen operativo conjunto.':'',individualFailure?'Al menos un material pendiente incumple un límite individual en todos los vehículos.':''].filter(Boolean).join(' '):
+  'La búsqueda no ha encontrado un reparto completo. Pueden existir otras distribuciones.';
+ return `<section class="panel" id="convoy-results"><h2>Resultado del convoy</h2>
+ <div class="status ${complete?'green':proven?'red':'amber'}"><div>${headline}<div class="help">${esc(detail)}</div></div></div>
+ <p class="help"><b>${used} de ${instances.length}</b> vehículos utilizados · ${dec(r.ms,0)} ms de cálculo${r.limited?' · Límite de búsqueda alcanzado. El reparto puede mejorarse.':''}</p>
+ ${loadMetrics(r)}
+ ${responsiveTable(['Vehículo','Bultos','Masa / carga útil','Ocupación volumétrica','Estado'],r.entries.map(e=>{
+  const t=loadTotals([],e.placed);
+  return [`<button class="small no-print" data-v26="inspect" data-instance="${esc(e.v.id)}">${esc(e.v.name)}</button><span class="print-only">${esc(e.v.name)}</span><div class="help">${esc(e.v.configurationName)}</div>`,
+   int(e.placed.length),`${dec(t.placedKg,1)} / ${int(e.v.payload)} kg`,e.Vu>0?dec(ratio(t.placedVol,e.Vu)*100,1)+' %':'Sin volumen operativo',e.placed.length?'Encaje comprobado':'Sin carga asignada'];
+ }))}
+ ${pendingHtml(r.pending)}
+ <p class="help">Planificación geométrica. Quedan por verificar estabilidad, resistencia real, reparto por ejes, amarres y acceso durante la maniobra.</p>
+ <div class="field no-print field26"><label for="convoy-instance">Vehículo para los croquis 2D y 3D</label><select id="convoy-instance">${r.entries.map(e=>`<option value="${esc(e.v.id)}" ${e.v.id===activeInstance?'selected':''}>${esc(e.v.name)} · ${e.placed.length} bultos</option>`).join('')}</select></div>
+ ${manualControls(r)}</section>`;
+}
+
+function lockControls(instances){
+ return data.convoy.locks.map(l=>{
+  const v=instances.find(v=>v.id===l.instanceId);
+  return `<div class="card26">${esc(v?.name||l.instanceId)} · ${esc(material(l.id)?.name||l.id)} × ${l.qty} <button class="small" data-v26="unlock" data-instance="${esc(l.instanceId)}" data-material="${esc(l.id)}">Desbloquear</button></div>`;
+ }).join('')||'<p class="help">Sin asignaciones bloqueadas.</p>';
+}
+
+function manualControls(r){
+ const from=r.entries.find(e=>e.v.id===activeInstance);
+ const list=from?Array.from(countsByMaterial(from.placed)): [];
+ return `<details class="no-print field26"><summary>Redistribuir material y gestionar bloqueos</summary>
+ ${from&&list.length&&r.entries.length>1?`<form id="move-form" class="formgrid form26"><input type="hidden" name="from" value="${esc(from.v.id)}">
+ <div class="field full"><b>Origen · ${esc(from.v.name)}</b></div>
+ <div class="field"><label for="move-material">Material</label><select id="move-material" name="material">${list.map(([id,qty])=>`<option value="${esc(id)}">${esc(material(id).name)} · ${qty} disponibles</option>`).join('')}</select></div>
+ <div class="field"><label for="move-qty">Unidades</label><input id="move-qty" name="qty" type="number" min="1" max="500" value="1" required></div>
+ <div class="field full"><label for="move-to">Destino</label><select id="move-to" name="to">${r.entries.filter(e=>e!==from).map(e=>`<option value="${esc(e.v.id)}">${esc(e.v.name)}</option>`).join('')}</select></div>
+ <div class="field full"><label class="checkboxline"><input type="checkbox" name="lock" checked>Bloquear las unidades trasladadas en el destino</label></div>
+ <div class="field full"><button class="primary" ${convoyBusy?'disabled':''}>${convoyBusy?'Comprobando…':'Comprobar y trasladar'}</button></div></form>`:'<p class="help">Selecciona como origen un vehículo con carga y añade al menos un vehículo de destino.</p>'}
+ <div class="list26">${lockControls(r.entries.map(e=>e.v))}</div></details>`;
+}
+
+async function calculateConvoyUI(){
+ if(convoyBusy)return;
+ const instances=fleetInstances(),{details,pieces}=manifestSummary();
+ if(!instances.length||!pieces){notification='Añade vehículos y materiales antes de calcular.';render();return;}
+ if(pieces>500){notification='El cálculo admite hasta 500 bultos. Divide el manifiesto.';render();return;}
+ const signature=convoySignature();
+ convoyBusy=true;notification='';render();
+ try{
+  await new Promise(resolve=>setTimeout(resolve,0));
+  const result=await solveConvoy(instances,details,[...data.convoy.locks],data.reservePct);
+  if(signature!==convoySignature())throw Error('El manifiesto o la flota cambió durante el cálculo. Vuelve a calcular.');
+  storeConvoy(result);
+  if(!result.placements.some(e=>e.instanceId===activeInstance&&e.placed.length))
+   activeInstance=result.placements.find(e=>e.placed.length)?.instanceId||'';
+ }catch(err){notification=err.message;}
+ finally{convoyBusy=false;render();}
+}
+
+function replaceLocks(locks,placements){
+ const previous=data.convoy.locks;
+ data.convoy.locks=locks;
+ try{storeConvoy(placements);}
+ catch(err){data.convoy.locks=previous;throw err;}
+}
+
+async function transferUnits(form){
+ if(convoyBusy||!convoyResult)return;
+ const r=convoyResult,signature=convoySignature();
+ const from=r.entries.find(e=>e.v.id===form.get('from')),to=r.entries.find(e=>e.v.id===form.get('to'));
+ const id=form.get('material'),qty=Number(form.get('qty'));
+ const sourceCounts=countsByMaterial(from?.placed||[]),destCounts=countsByMaterial(to?.placed||[]);
+ if(!from||!to||from===to||!Number.isInteger(qty)||qty<1||qty>(sourceCounts.get(id)||0)){
+  notification='Selecciona un destino distinto y una cantidad disponible en el origen.';render();return;
+ }
+ sourceCounts.set(id,sourceCounts.get(id)-qty);
+ destCounts.set(id,(destCounts.get(id)||0)+qty);
+ convoyBusy=true;notification='Comprobando el traslado…';render();
+ const start=performance.now();
+ try{
+  const plan=async (entry,counts)=>{
+   const units=buildUnits(r.details.filter(m=>counts.get(m.id)>0).map(m=>({...m,qty:counts.get(m.id)})));
+   if(!units.length)return [];
+   const mass=units.reduce((a,m)=>a+m.kg,0);
+   if(mass>entry.v.payload+EPS)throw Error(entry.v.name+': la masa del manifiesto excede la carga útil.');
+   const invalid=units.find(m=>geometryFailure(m,entry.v,data.reservePct)||!passesDoor(m,entry.v));
+   if(invalid)throw Error(entry.v.name+' · '+invalid.name+': '+(geometryFailure(invalid,entry.v,data.reservePct)||'abertura declarada insuficiente. Revisa la maniobra.'));
+   const placed=await packVehicle(entry.v,units,data.reservePct,units,{left:450000,deadline:performance.now()+850});
+   if(placed.length!==units.length)throw Error(entry.v.name+': no se ha encontrado una distribución completa para el traslado.');
+   return placed;
+  };
+  const source=await plan(from,sourceCounts),dest=await plan(to,destCounts);
+  if(signature!==convoySignature())throw Error('El plan cambió durante el traslado. Vuelve a intentarlo.');
+  const locks=data.convoy.locks.map(l=>({...l}));
+  const oldLock=locks.find(l=>l.instanceId===from.v.id&&l.id===id);
+  if(oldLock)oldLock.qty=Math.min(oldLock.qty,sourceCounts.get(id));
+  if(form.has('lock')){
+   const lock=locks.find(l=>l.instanceId===to.v.id&&l.id===id);
+   if(lock)lock.qty+=qty;else locks.push({instanceId:to.v.id,id,qty});
+  }
+  const placements=r.entries.map(e=>({instanceId:e.v.id,placed:e===from?source:e===to?dest:e.placed}));
+  replaceLocks(locks.filter(l=>l.qty>0),{placements,limited:r.limited,ms:performance.now()-start});
+  activeInstance=to.v.id;notification=`Traslado guardado · ${qty} unidades a ${to.v.name}.`;
+ }catch(err){notification='Traslado rechazado. '+err.message;}
+ finally{convoyBusy=false;render();}
+}
+
+function exportConvoyCsv(){
+ if(!convoyResult){notification='Calcula el convoy antes de exportar el CSV.';render();return;}
+ const r=convoyResult,rows=[['Vehículo','Configuración','Material','Cantidad','Masa (kg)','Volumen (m³)']];
+ for(const e of r.entries){
+  const counts=countsByMaterial(e.placed);
+  if(!counts.size)rows.push([e.v.name,e.v.configurationName,'Sin carga asignada',0,0,0]);
+  for(const [id,qty] of counts){const m=material(id);rows.push([e.v.name,e.v.configurationName,m.name,qty,m.kg*qty,vol(m.l,m.w,m.h)*qty]);}
+ }
+ for(const m of r.pending)rows.push(['PENDIENTE','',m.name,m.qty,m.pendingKg,m.pendingVol]);
+ const csv='\ufeff'+rows.map(row=>row.map(x=>'"'+String(x).replace(/"/g,'""')+'"').join(';')).join('\r\n');
+ download('manifiesto_convoy.csv',new Blob([csv],{type:'text/csv;charset=utf-8'}));
+}
+
+function cleanFleetLocks(){
+ data.convoy.fleet=data.convoy.fleet.filter(row=>{
+  const v=data.vehicles.find(v=>v.id===row.vehicleId);
+  if(!v)return false;
+  if(!v.configurations.some(c=>c.id===row.configId))row.configId=v.configId;
+  return true;
+ });
+ const ids=new Set(fleetInstances().map(v=>v.id));
+ data.convoy.locks=data.convoy.locks.filter(l=>ids.has(l.instanceId)&&material(l.id)&&data.plan.some(p=>p.id===l.id));
+}
+
+document.addEventListener('submit',e=>{
+ if(!['fleet-form','move-form'].includes(e.target.id))return;
+ e.preventDefault();const f=new FormData(e.target);
+ if(e.target.id==='move-form'){transferUnits(f);return;}
+ const v=data.vehicles.find(v=>v.id===f.get('model')),qty=Number(f.get('qty'));
+ if(!v||!Number.isInteger(qty)||qty<1||fleetInstances().length+qty>30)return alert('Selecciona un modelo y un total de hasta 30 vehículos.');
+ data.convoy.fleet.push({id:uid(),vehicleId:v.id,configId:v.configId,qty});save();render();
+});
+
+document.addEventListener('change',e=>{
+ const el=e.target;
+ if(el.id==='convoy-instance'||el.id==='scene-vehicle'){activeInstance=el.value;render();return;}
+ const id=el.dataset.fleetQty||el.dataset.fleetConfig;
+ if(!id)return;
+ const row=data.convoy.fleet.find(r=>r.id===id);
+ if(!row)return;
+ if(el.dataset.fleetQty){
+  const qty=Number(el.value);
+  if(!Number.isInteger(qty)||qty<1||fleetInstances().length-row.qty+qty>30){alert('Indica un total de hasta 30 vehículos.');render();return;}
+  row.qty=qty;cleanFleetLocks();
+ }else row.configId=el.value;
+ save();render();
+});
+
+document.addEventListener('click',e=>{
+ const el=e.target.closest('[data-v26]');
+ if(!el)return;
+ switch(el.dataset.v26){
+  case 'mode':data.mode=el.dataset.mode;restoreConvoy();save();render();break;
+  case 'calculate-convoy':calculateConvoyUI();break;
+  case 'inspect':activeInstance=el.dataset.instance;render();$('#seccion-3d').scrollIntoView({block:'start',behavior:'smooth'});break;
+  case 'remove-fleet':
+   data.convoy.fleet=data.convoy.fleet.filter(r=>r.id!==el.dataset.row);cleanFleetLocks();save();render();break;
+  case 'unlock':
+   if(convoyBusy)break;
+   try{
+    const locks=data.convoy.locks.filter(l=>l.instanceId!==el.dataset.instance||l.id!==el.dataset.material);
+    if(convoyResult)replaceLocks(locks,data.convoy.assignments);
+    else{data.convoy.locks=locks;data.convoy.assignments=null;save();}
+    notification='Asignación desbloqueada.';
+   }catch(err){notification=err.message;}
+   render();break;
+ }
+});
+
+function render(){if(data.mode==='convoy'&&convoyResult&&convoyResult.signature!==convoySignature())convoyResult=null;document.body.classList.remove('viewer-open');const tabs=[...document.querySelectorAll('#tabs [data-tab]')];tabs.forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));$('#app').innerHTML=(notification?`<div class="callout no-print" role="status" style="margin-bottom:12px">${esc(notification)} <button class="small" data-action="dismiss">Cerrar</button></div>`:'')+({plan:planPage,vehicles:vehiclesPage,materials:materialsPage,help:helpPage}[tab]());if(tab==='plan')mount3D(lastCalc);}
 function useTab(t){document.body.classList.remove('viewer-open');tab=t;render();window.scrollTo({top:0,behavior:'smooth'});}
-document.addEventListener('click',e=>{const el=e.target.closest('[data-jump],[data-tab],[data-action],[data-edit-v],[data-edit-m],[data-delete-v],[data-delete-m],[data-select-v],[data-remove]');if(!el)return;const ds=el.dataset;if(ds.jump){document.getElementById('seccion-'+ds.jump)?.scrollIntoView({behavior:'smooth',block:'start'});return;}if(ds.tab){useTab(ds.tab);return}if(ds.editV){editV=ds.editV;useTab('vehicles');return}if(ds.editM){editM=ds.editM;useTab('materials');return}if(ds.selectV){data.selectedVehicleId=ds.selectV;save();useTab('plan');return}if(ds.deleteV){const x=data.vehicles.find(v=>v.id===ds.deleteV);if(x&&confirm(`¿Eliminar el vehículo «${x.name}»?`)){data.vehicles=data.vehicles.filter(v=>v.id!==ds.deleteV);if(data.selectedVehicleId===ds.deleteV)data.selectedVehicleId=data.vehicles[0]?.id||'';editV=null;save();render()}return}if(ds.deleteM){const x=material(ds.deleteM);if(x&&confirm(`¿Eliminar «${x.name}» del catálogo y del plan actual?`)){data.materials=data.materials.filter(m=>m.id!==ds.deleteM);data.plan=data.plan.filter(p=>p.id!==ds.deleteM);editM=null;save();render()}return}if(ds.remove){data.plan=data.plan.filter(p=>p.id!==ds.remove);save();render();return}if(ds.action){switch(ds.action){case 'export':download('planificador_cargas_datos.json',new Blob([JSON.stringify({...data,schemaVersion:'2.3',exportedAt:new Date().toISOString()},null,2)],{type:'application/json'}));break;case 'import':$('#jsonFile').click();break;case 'csv':{const c=calculate(),rows=[['Vehículo',vehicle()?.name||''],['Reserva operativa (%)',data.reservePct],['Material','Cantidad','Longitud (cm)','Anchura (cm)','Altura (cm)','kg/ud','m³ totales','kg totales'],...(c.details||[]).map(m=>[m.name,m.qty,m.l,m.w,m.h,m.kg,m.volume,m.totalKg]),['TOTAL',c.pieces,'','','','',c.totalVol,c.totalKg]];const content='\ufeff'+rows.map(r=>r.map(x=>'"'+String(x??'').replace(/"/g,'""')+'"').join(';')).join('\r\n');download('manifiesto_carga.csv',new Blob([content],{type:'text/csv;charset=utf-8'}));break}case 'print':window.print();break;case '3d-iso':case '3d-front':case '3d-side':case '3d-top':case '3d-reset':v3Preset(ds.action);break;case '3d-expand':{const box=$('.scene3d');if(box){const active=box.classList.toggle('is-expanded');document.body.classList.toggle('viewer-open',active);el.textContent=active?'✕ Cerrar 3D':'⤢ Ampliar 3D';el.setAttribute('aria-label',active?'Cerrar vista ampliada':'Ampliar la vista 3D');requestAnimationFrame(()=>draw3D(lastCalc));}break;}case '3d-in':view3d.zoom=clamp(view3d.zoom*1.18,.42,3.8);draw3D(lastCalc);break;case '3d-out':view3d.zoom=clamp(view3d.zoom/1.18,.42,3.8);draw3D(lastCalc);break;case '3d-png':{const cv=$('#load3d');if(cv)cv.toBlob(b=>{if(b)download('croquis_carga_3d.png',b)},'image/png');break;}case 'reset':if(confirm('¿Comenzar desde cero? Se borrarán TODOS los vehículos, materiales y el plan local actual. Exporta una copia antes si quieres conservarlos.')){data={vehicles:[],materials:[],plan:[],selectedVehicleId:'',reservePct:15};editV=null;editM=null;save();render()}break;case 'clear':if(confirm('¿Vaciar el manifiesto de carga actual? Los catálogos se conservarán.')){data.plan=[];save();render()}break;case 'cancel-edit-v':editV=null;render();break;case 'cancel-edit-m':editM=null;render();break;case 'dismiss':notification='';render();break;}}});
-document.addEventListener('change',e=>{if(e.target.id==='threeFocus'){view3d.focus=e.target.value;draw3D(lastCalc);return;}if(e.target.id==='selvehicle'){data.selectedVehicleId=e.target.value;save();render()}if(e.target.dataset.planQty){const id=e.target.dataset.planQty,qty=Number(e.target.value);if(!Number.isInteger(qty)||qty<0||qty>1000){alert('Introduce entre 0 y 1000 unidades.');render();return}if(qty===0){data.plan=data.plan.filter(p=>p.id!==id)}else{const p=data.plan.find(p=>p.id===id);if(p)p.qty=qty;}save();render()}});
-document.addEventListener('input',e=>{if(e.target.id==='threeCut'){view3d.cut=Number(e.target.value);const out=$('#cutValue');if(out)out.textContent=int(view3d.cut)+' cm';draw3D(lastCalc);return;}if(e.target.id==='reserva'){data.reservePct=Number(e.target.value);save();render();}});
+document.addEventListener('click',e=>{const el=e.target.closest('[data-jump],[data-tab],[data-action],[data-edit-v],[data-edit-m],[data-delete-v],[data-delete-m],[data-select-v],[data-remove]');if(!el)return;const ds=el.dataset;if(ds.jump){(ds.jump==='resultado'&&data.mode==='convoy'?$('#convoy-results'):document.getElementById('seccion-'+ds.jump))?.scrollIntoView({behavior:'smooth',block:'start'});return;}if(ds.tab){useTab(ds.tab);return}if(ds.editV){editV=ds.editV;useTab('vehicles');return}if(ds.editM){editM=ds.editM;useTab('materials');return}if(ds.selectV){data.selectedVehicleId=ds.selectV;save();useTab('plan');return}if(ds.deleteV){const x=data.vehicles.find(v=>v.id===ds.deleteV);if(x&&confirm(`¿Eliminar el vehículo «${x.name}»?`)){data.vehicles=data.vehicles.filter(v=>v.id!==ds.deleteV);if(data.selectedVehicleId===ds.deleteV)data.selectedVehicleId=data.vehicles[0]?.id||'';editV=null;save();render()}return}if(ds.deleteM){const x=material(ds.deleteM);if(x&&confirm(`¿Eliminar «${x.name}» del catálogo y del plan actual?`)){data.materials=data.materials.filter(m=>m.id!==ds.deleteM);data.plan=data.plan.filter(p=>p.id!==ds.deleteM);editM=null;save();render()}return}if(ds.remove){data.plan=data.plan.filter(p=>p.id!==ds.remove);save();render();return}if(ds.action){switch(ds.action){case 'export':download('planificador_cargas_datos.json',new Blob([JSON.stringify(exportData(),null,2)],{type:'application/json'}));break;case 'import':$('#jsonFile').click();break;case 'csv':{if(data.mode==='convoy'){exportConvoyCsv();break;}const c=calculate(),rows=[['Vehículo',vehicle()?.name||''],['Reserva operativa (%)',data.reservePct],['Material','Cantidad','Longitud (cm)','Anchura (cm)','Altura (cm)','kg/ud','m³ totales','kg totales'],...(c.details||[]).map(m=>[m.name,m.qty,m.l,m.w,m.h,m.kg,m.volume,m.totalKg]),['TOTAL',c.pieces,'','','','',c.totalVol,c.totalKg]];const content='\ufeff'+rows.map(r=>r.map(x=>'"'+String(x??'').replace(/"/g,'""')+'"').join(';')).join('\r\n');download('manifiesto_carga.csv',new Blob([content],{type:'text/csv;charset=utf-8'}));break}case 'print':window.print();break;case '3d-iso':case '3d-front':case '3d-side':case '3d-top':case '3d-reset':v3Preset(ds.action);break;case '3d-expand':{const box=$('.scene3d');if(box){const active=box.classList.toggle('is-expanded');document.body.classList.toggle('viewer-open',active);el.textContent=active?'✕ Cerrar 3D':'⤢ Ampliar 3D';el.setAttribute('aria-label',active?'Cerrar vista ampliada':'Ampliar la vista 3D');requestAnimationFrame(()=>draw3D(lastCalc));}break;}case '3d-in':view3d.zoom=clamp(view3d.zoom*1.18,.42,3.8);draw3D(lastCalc);break;case '3d-out':view3d.zoom=clamp(view3d.zoom/1.18,.42,3.8);draw3D(lastCalc);break;case '3d-png':{const cv=$('#load3d');if(cv)cv.toBlob(b=>{if(b)download('croquis_carga_3d.png',b)},'image/png');break;}case 'reset':if(confirm('¿Comenzar desde cero? Se borrarán TODOS los vehículos, materiales y el plan local actual. Exporta una copia antes si quieres conservarlos.')){data=normalize({vehicles:[],materials:[],plan:[],selectedVehicleId:'',reservePct:15});editV=null;editM=null;save();render()}break;case 'clear':if(confirm('¿Vaciar el manifiesto de carga actual? Los catálogos se conservarán.')){data.plan=[];save();render()}break;case 'cancel-edit-v':editV=null;render();break;case 'cancel-edit-m':editM=null;render();break;case 'dismiss':notification='';render();break;}}});
+document.addEventListener('change',e=>{if(e.target.id==='reserva'){data.reservePct=Number(e.target.value);save();render();return;}if(e.target.id==='threeFocus'){view3d.focus=e.target.value;draw3D(lastCalc);return;}if(e.target.id==='selvehicle'){data.selectedVehicleId=e.target.value;save();render()}if(e.target.dataset.planQty){const id=e.target.dataset.planQty,qty=Number(e.target.value);if(!Number.isInteger(qty)||qty<0||qty>1000){alert('Introduce entre 0 y 1000 unidades.');render();return}if(qty===0){data.plan=data.plan.filter(p=>p.id!==id)}else{const p=data.plan.find(p=>p.id===id);if(p)p.qty=qty;}save();render()}});
+document.addEventListener('input',e=>{if(e.target.id==='threeCut'){view3d.cut=Number(e.target.value);const out=$('#cutValue');if(out)out.textContent=int(view3d.cut)+' cm';draw3D(lastCalc);return;}if(e.target.id==='reserva')$('#reslabel').textContent=dec(e.target.value,0);});
 document.addEventListener('submit',e=>{if(!['addForm','vehicleForm','materialForm'].includes(e.target.id))return;e.preventDefault();const form=e.target;if(form.id==='addForm'){const id=$('#selmaterial').value,qty=Number($('#addQty').value);if(!material(id)||!Number.isInteger(qty)||qty<1||qty>1000)return alert('Selecciona un material y una cantidad válida (1–1000).');const existing=data.plan.find(p=>p.id===id);if(existing){if(existing.qty+qty>1000)return alert('Máximo 1000 unidades por material en este prototipo.');existing.qty+=qty;}else data.plan.push({id,qty});}
-if(form.id==='vehicleForm'){const f=new FormData(form),obj={id:editV||uid(),name:String(f.get('name')).trim(),l:n(f.get('l')),w:n(f.get('w')),h:n(f.get('h')),payload:n(f.get('payload')),doorW:n(f.get('doorW')),doorH:n(f.get('doorH'))};if(!obj.name||![obj.l,obj.w,obj.h,obj.payload].every(x=>x>0)||[obj.doorW,obj.doorH].some(x=>x<0))return alert('Comprueba los datos: dimensiones y carga útil deben ser positivas.');if((obj.doorW>0)!==(obj.doorH>0))return alert('Indica ambas dimensiones de la puerta o deja ambas vacías.');if(editV){data.vehicles=data.vehicles.map(x=>x.id===editV?obj:x)}else{data.vehicles.push(obj);data.selectedVehicleId=obj.id;}editV=null;}
+if(form.id==='vehicleForm'){const f=new FormData(form),obj={id:editV||uid(),name:String(f.get('name')).trim(),l:n(f.get('l')),w:n(f.get('w')),h:n(f.get('h')),payload:n(f.get('payload')),doorW:n(f.get('doorW')),doorH:n(f.get('doorH'))};if(!obj.name||![obj.l,obj.w,obj.h,obj.payload].every(x=>x>0)||[obj.doorW,obj.doorH].some(x=>x<0))return alert('Comprueba los datos: dimensiones y carga útil deben ser positivas.');if((obj.doorW>0)!==(obj.doorH>0))return alert('Indica ambas dimensiones de la puerta o deja ambas vacías.');if(editV){const previous=data.vehicles.find(x=>x.id===editV);obj.configId=previous.configId;obj.configurations=previous.configurations;try{normalizeConfigs(obj)}catch(err){return alert(err.message)}data.vehicles=data.vehicles.map(x=>x.id===editV?obj:x)}else{normalizeConfigs(obj);data.vehicles.push(obj);data.selectedVehicleId=obj.id;}editV=null;}
 if(form.id==='materialForm'){const f=new FormData(form),obj={id:editM||uid(),name:String(f.get('name')).trim(),l:n(f.get('l')),w:n(f.get('w')),h:n(f.get('h')),kg:n(f.get('kg')),levels:n(f.get('levels')),rotate:f.has('rotate'),stackable:f.has('stackable'),mixedAbove:f.has('mixedAbove'),maxTopKg:f.get('maxTopKg')===''?null:n(f.get('maxTopKg'))};if(!obj.name||![obj.l,obj.w,obj.h].every(x=>x>0)||![obj.l,obj.w,obj.h,obj.kg].every(Number.isFinite)||obj.kg<0||(obj.maxTopKg!==null&&(!Number.isFinite(obj.maxTopKg)||obj.maxTopKg<0))||!Number.isInteger(obj.levels)||obj.levels<1||obj.levels>30)return alert('Comprueba medidas, peso y número de niveles.');if(editM){data.materials=data.materials.map(x=>x.id===editM?obj:x)}else data.materials.push(obj);editM=null;}
 save();render();});
-const file=document.createElement('input');file.type='file';file.id='jsonFile';file.accept='.json,application/json';file.hidden=true;document.body.appendChild(file);file.addEventListener('change',async e=>{const f=e.target.files?.[0];if(!f)return;try{const text=await f.text(),restored=normalize(JSON.parse(text));if(!confirm('¿Sustituir el catálogo y el plan de este navegador por los datos del archivo?'))return;data=restored;save();notification='Datos importados correctamente.';tab='plan';render()}catch(err){alert('No se pudo importar: '+err.message)}finally{file.value=''}});
+const file=document.createElement('input');file.type='file';file.id='jsonFile';file.accept='.json,application/json';file.hidden=true;document.body.appendChild(file);file.addEventListener('change',async e=>{const f=e.target.files?.[0];if(!f)return;try{const text=await f.text(),restored=normalize(JSON.parse(text));if(!confirm('¿Sustituir el catálogo y el plan de este navegador por los datos del archivo?'))return;data=restored;restoreConvoy();save();notification='Datos importados correctamente.';tab='plan';render()}catch(err){alert('No se pudo importar: '+err.message)}finally{file.value=''}});
+window.Carga26=Object.freeze({calculateConvoy:()=>convoyResult,validate:validatePlacement,snapshot:()=>JSON.parse(JSON.stringify(data))});
 window.Carga23=Object.freeze({calculate:()=>JSON.parse(JSON.stringify(calculate())),validate:validatePlacement,units3D:()=>make3DUnits(calculate()).items.map(p=>({...p})),snapshot:()=>JSON.parse(JSON.stringify(data))});
-save();render();
+restoreConvoy();if(!startupError)save();render();
 })();
 </script>
 </body>
